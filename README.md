@@ -4,7 +4,7 @@ A high-performance desktop application for rapidly culling and managing massive 
 
 Video Cull is designed for speed. Instead of opening each video file, it generates a strip of thumbnails for every video in a folder, allowing you to quickly decide what to keep and what to delete using intuitive keyboard shortcuts.
 
-![Video Cull Screenshot](C:\Users\Matthijs\.gemini\antigravity\brain\9af46103-c029-43bc-b7a9-9613aa8c3eec\video_cull_ui_verification_1775068519733.png)
+
 
 ## ✨ Key Features
 
@@ -64,5 +64,5 @@ Video Cull is designed for speed. Instead of opening each video file, it generat
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under the GNU General Public License v3.0.
 

@@ -12,3 +12,56 @@
   color: var(--text-tertiary);
   font-size: 14px;
 }
+
+/* ── Folder Group Header ── */
+.grid-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 4px;
+  user-select: none;
+}
+
+.grid-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.grid-group-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.grid-group-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: var(--bg-surface-hover);
+  padding: 1px 8px;
+  border-radius: 99px;
+}
+
+.grid-group-size {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Card Row ── */
+.grid-card-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.grid-card-cell {
+  flex-shrink: 0;
+}

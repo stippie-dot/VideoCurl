@@ -11,6 +11,7 @@
     "package": "vite build && electron-builder --win"
   },
   "dependencies": {
+    "@videojs/react": "^10.0.0-beta.13",
     "fluent-ffmpeg": "^2.1.3",
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",

@@ -179,6 +179,31 @@
   flex: 1;
 }
 
+/* ── Nested Sort Options (inset panel) ── */
+.sort-nested-options {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sort-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sort-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
 /* ── Progress ── */
 .progress-info {
   display: flex;
@@ -272,6 +297,27 @@
 }
 .btn-danger:hover {
   background: rgba(255, 92, 108, 0.2);
+}
+.btn-toggle {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  width: 100%;
+  font-size: 12px;
+}
+.btn-toggle:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.btn-toggle-active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn-toggle-active:hover {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
 }
 .btn:disabled {
   opacity: 0.5;

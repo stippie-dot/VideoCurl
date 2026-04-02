@@ -1,7 +1,7 @@
 import type { Video } from '../types';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
-import { formatSize, formatDuration } from '../utils';
+import { formatSize, formatDuration, isWebSupported } from '../utils';
 import { Check, Trash2, Play } from 'lucide-react';
 import './VideoCard.css';
 
@@ -13,6 +13,7 @@ interface VideoCardProps {
 
 export default function VideoCard({ video, style, onClick }: VideoCardProps) {
   const setVideoStatus = useStore((s) => s.setVideoStatus);
+  const setPreviewVideo = useStore((s) => s.setPreviewVideo);
 
   const statusClass =
     video.status === 'keep' ? 'card-keep' :
@@ -28,9 +29,13 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
     setVideoStatus(video.id, video.status === 'delete' ? 'pending' : 'delete');
   };
 
+  const isWeb = isWebSupported(video.path);
+
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.electronAPI) {
+    if (isWeb && !e.ctrlKey) {
+      setPreviewVideo(video);
+    } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
     }
   };
@@ -48,7 +53,11 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
         )}
 
         <div className="card-hover-overlay">
-          <button className="card-action-btn card-play-btn" onClick={handlePlay} title="Play in VLC">
+          <button 
+            className="card-action-btn card-play-btn" 
+            onClick={handlePlay} 
+            title={isWeb ? "Quick Preview (Ctrl+Click for external player)" : "Play externally"}
+          >
             <Play size={20} />
           </button>
         </div>

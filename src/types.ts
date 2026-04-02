@@ -1,13 +1,13 @@
 // ── Video Status ────────────────────────────────────────────────────
 export type VideoStatus = 'pending' | 'keep' | 'delete';
 
-// ── Core Video Object ──────────────────────────────────────────────
 export interface Video {
   id: string;
   filename: string;
   path: string;
   sizeBytes: number;
-  modifiedAt: number;
+  date: number;
+  metadataDate?: number | null;
   durationSecs: number | null;
   duplicateHash: string | null;
   status: VideoStatus;
@@ -30,6 +30,7 @@ export interface ThumbReadyEvent {
   videoId: string;
   thumbnails: string[];
   durationSecs: number;
+  metadataDate?: number | null;
 }
 
 // ── Delete Result ──────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export interface VideoStats {
 
 // ── Sort & Filter ──────────────────────────────────────────────────
 export type SortField = 'name' | 'size' | 'duration' | 'date';
+export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
 
@@ -84,10 +86,14 @@ export interface VideoStore {
   sortBy: SortField;
   sortOrder: SortOrder;
   minSizeFilter: number;
+  groupByFolder: boolean;
+  folderSortBy: FolderSortField;
+  folderSortOrder: SortOrder;
 
   // View Mode
   reviewMode: boolean;
   reviewIndex: number;
+  previewVideo: Video | null;
 
   // Card sizing
   cardScale: number;
@@ -102,7 +108,7 @@ export interface VideoStore {
   setDirectory: (dir: string | null) => void;
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
-  updateVideoThumbnails: (videoId: string, thumbnails: string[], durationSecs?: number) => void;
+  updateVideoThumbnails: (videoId: string, thumbnails: string[], durationSecs?: number, metadataDate?: number | null) => void;
   setOSThumbnail: (videoId: string, thumbData: string) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
   undo: () => void;
@@ -110,12 +116,16 @@ export interface VideoStore {
   setSortBy: (sortBy: SortField) => void;
   setSortOrder: (sortOrder: SortOrder) => void;
   setMinSizeFilter: (minSize: number) => void;
+  setGroupByFolder: (val: boolean) => void;
+  setFolderSortBy: (sortBy: FolderSortField) => void;
+  setFolderSortOrder: (order: SortOrder) => void;
   setIsScanning: (val: boolean) => void;
   setScanProgress: (progress: ScanProgress) => void;
   setIsGenerating: (val: boolean) => void;
   setGenProgress: (progress: ThumbProgress) => void;
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
+  setPreviewVideo: (video: Video | null) => void;
   setCardScale: (scale: number) => void;
   advanceReview: () => void;
   removeDeletedVideos: (deletedPaths: string[]) => void;
@@ -132,7 +142,9 @@ export interface ElectronAPI {
   getOSThumbnail: (filePath: string) => Promise<string | null>;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReady: (callback: (data: ThumbReadyEvent) => void) => () => void;
+  onMenuAction: (callback: (action: string) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
+  clearCache: (dirPath: string) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   openVideo: (filePath: string) => Promise<void>;
 }

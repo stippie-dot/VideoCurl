@@ -9,13 +9,25 @@ const MAX_CONCURRENT = 3;
 let cancelled = false;
 
 /**
- * Get video duration via ffprobe.
+ * Get video duration and creation_time via ffprobe.
+ * Returns { duration: number, creationTime: number | null }
  */
-function getVideoDuration(filePath) {
+function getVideoMetadata(filePath) {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
       if (err) return reject(err);
-      resolve(metadata?.format?.duration || 0);
+      const duration = metadata?.format?.duration || 0;
+      // Try to extract creation_time from format tags (camera date)
+      let creationTime = null;
+      const tags = metadata?.format?.tags;
+      if (tags) {
+        const raw = tags.creation_time || tags.Creation_Time || tags.CREATION_TIME;
+        if (raw) {
+          const parsed = new Date(raw).getTime();
+          if (!isNaN(parsed)) creationTime = parsed;
+        }
+      }
+      resolve({ duration, creationTime });
     });
   });
 }
@@ -105,12 +117,18 @@ async function generateThumbnailsForVideo(video, thumbDir) {
     const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort();
     if (jpgs.length >= THUMB_COUNT) {
       let duration = video.durationSecs;
+      let creationTime = null;
       if (!duration) {
-        try { duration = await getVideoDuration(video.path); } catch { duration = 0; }
+        try {
+          const meta = await getVideoMetadata(video.path);
+          duration = meta.duration;
+          creationTime = meta.creationTime;
+        } catch { duration = 0; }
       }
       return {
         thumbnails: jpgs.map((f) => path.join(videoThumbDir, f)),
         durationSecs: duration,
+        creationTime,
       };
     }
     // Incomplete thumbnails — clean up and regenerate
@@ -121,10 +139,13 @@ async function generateThumbnailsForVideo(video, thumbDir) {
     // Directory doesn't exist yet
   }
 
-  // Get duration
+  // Get duration + metadata date
   let duration;
+  let creationTime = null;
   try {
-    duration = await getVideoDuration(video.path);
+    const meta = await getVideoMetadata(video.path);
+    duration = meta.duration;
+    creationTime = meta.creationTime;
   } catch {
     duration = 0;
   }
@@ -159,7 +180,7 @@ async function generateThumbnailsForVideo(video, thumbDir) {
     } catch { /* truly can't generate thumbnails for this video */ }
   }
 
-  return { thumbnails, durationSecs: duration };
+  return { thumbnails, durationSecs: duration, creationTime };
 }
 
 /**
@@ -183,7 +204,7 @@ async function processVideos(videos, thumbDir, onProgress, onVideoReady) {
             const result = await generateThumbnailsForVideo(video, thumbDir);
             current++;
             if (onProgress) onProgress({ current, total });
-            if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs);
+            if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
           } catch (err) {
             if (err.message === 'Cancelled') break;
             current++;

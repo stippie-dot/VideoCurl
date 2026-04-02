@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
+import PreviewModal from './components/PreviewModal';
 import './App.css';
 
 export default function App() {
@@ -18,29 +19,6 @@ export default function App() {
   const setGenProgress = useStore((s) => s.setGenProgress);
   const updateVideoThumbnails = useStore((s) => s.updateVideoThumbnails);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
-
-  // Subscribe to IPC events
-  useEffect(() => {
-    if (!window.electronAPI) return;
-
-    const unsub1 = window.electronAPI.onScanProgress((progress) => {
-      setScanProgress(progress);
-    });
-
-    const unsub2 = window.electronAPI.onThumbProgress((progress) => {
-      setGenProgress(progress);
-    });
-
-    const unsub3 = window.electronAPI.onThumbReady(({ videoId, thumbnails, durationSecs }) => {
-      updateVideoThumbnails(videoId, thumbnails, durationSecs);
-    });
-
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnails]);
 
   // Scan directory when selected
   const handleScan = useCallback(async (dirPath: string) => {
@@ -68,6 +46,91 @@ export default function App() {
     }
   }, [includeSubfolders, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress]);
 
+  // Subscribe to IPC events
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsub1 = window.electronAPI.onScanProgress((progress) => {
+      setScanProgress(progress);
+    });
+
+    const unsub2 = window.electronAPI.onThumbProgress((progress) => {
+      setGenProgress(progress);
+    });
+
+    const unsub3 = window.electronAPI.onThumbReady(({ videoId, thumbnails, durationSecs, metadataDate }) => {
+      updateVideoThumbnails(videoId, thumbnails, durationSecs, metadataDate);
+    });
+
+    const unsub4 = window.electronAPI.onMenuAction(async (action) => {
+      const state = useStore.getState();
+      switch (action) {
+        case 'open-directory': {
+          const dir = await window.electronAPI.selectDirectory();
+          if (dir) state.setDirectory(dir);
+          break;
+        }
+        case 'rescan-directory': {
+          if (state.directory) handleScan(state.directory);
+          break;
+        }
+        case 'clear-cache': {
+          if (state.directory) {
+            const confirmed = window.confirm('Are you sure you want to clear the cache? All manual review decisions will be lost.');
+            if (confirmed) {
+              await window.electronAPI.clearCache(state.directory);
+              state.setVideos([]);
+              handleScan(state.directory);
+            }
+          }
+          break;
+        }
+        case 'undo': {
+          state.undo();
+          break;
+        }
+        case 'delete-all': {
+          const toDelete = state.videos.filter((v) => v.status === 'delete');
+          if (toDelete.length === 0) break;
+          const confirmed = window.confirm(`Move ${toDelete.length} marked videos to Recycle Bin?`);
+          if (confirmed) {
+            const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
+            const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
+            state.removeDeletedVideos(deletedPaths);
+          }
+          break;
+        }
+        case 'zoom-in': {
+          state.setCardScale(Math.min(state.cardScale + 0.1, 1.5));
+          break;
+        }
+        case 'zoom-out': {
+          state.setCardScale(Math.max(state.cardScale - 0.1, 0.5));
+          break;
+        }
+        case 'reveal-video': {
+          if (state.reviewMode && state.filteredVideos[state.reviewIndex]) {
+             window.electronAPI.openInExplorer(state.filteredVideos[state.reviewIndex].path);
+          }
+          break;
+        }
+        case 'play-external': {
+          if (state.reviewMode && state.filteredVideos[state.reviewIndex]) {
+             window.electronAPI.openVideo(state.filteredVideos[state.reviewIndex].path);
+          }
+          break;
+        }
+      }
+    });
+
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+      unsub4();
+    };
+  }, [setScanProgress, setGenProgress, updateVideoThumbnails, handleScan]);
+
   useEffect(() => {
     if (directory) {
       handleScan(directory);
@@ -90,6 +153,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <PreviewModal />
     </div>
   );
 }

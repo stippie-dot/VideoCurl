@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
@@ -34,9 +34,10 @@ function createWindow() {
   }
 }
 
-// ── Custom Protocol for serving thumbnail images ────────────────────────
+// ── Custom Protocol for serving thumbnail images and videos ───────────────
 protocol.registerSchemesAsPrivileged([
   { scheme: 'thumb', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
+  { scheme: 'video', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
 ]);
 
 app.whenReady().then(() => {
@@ -61,8 +62,165 @@ app.whenReady().then(() => {
     }
   });
 
+  protocol.handle('video', async (request) => {
+    let filePath = decodeURIComponent(request.url.slice('video:///'.length));
+    
+    // On Windows, ensure the path starts with drive letter
+    if (process.platform === 'win32' && !filePath.match(/^[a-zA-Z]:/)) {
+      filePath = filePath.replace(/^\//, '');
+    }
+    
+    try {
+      const { createReadStream, statSync } = require('fs');
+      const { Readable } = require('stream');
+      const stats = statSync(filePath);
+      const fileSize = stats.size;
+      const range = request.headers.get('range');
+
+      const ext = require('path').extname(filePath).toLowerCase();
+      let contentType = 'video/mp4';
+      if (ext === '.webm') contentType = 'video/webm';
+      else if (ext === '.ogg') contentType = 'video/ogg';
+
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = (end - start) + 1;
+        
+        const fileStream = createReadStream(filePath, { start, end });
+        const webStream = Readable.toWeb(fileStream);
+
+        return new Response(webStream, {
+          status: 206,
+          headers: {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize.toString(),
+            'Content-Type': contentType,
+          }
+        });
+      } else {
+        const fileStream = createReadStream(filePath);
+        const webStream = Readable.toWeb(fileStream);
+        return new Response(webStream, {
+          status: 200,
+          headers: {
+            'Content-Length': fileSize.toString(),
+            'Content-Type': contentType,
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Video protocol error:', e);
+      return new Response('Not Found', { status: 404 });
+    }
+  });
+
   createWindow();
+  setApplicationMenu();
 });
+
+function setApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open Directory...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'open-directory')
+        },
+        {
+          label: 'Rescan Directory',
+          accelerator: 'F5',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'rescan-directory')
+        },
+        {
+          label: 'Clear Cache & Reload',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'clear-cache')
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Actions',
+      submenu: [
+        {
+          label: 'Undo Last Action',
+          accelerator: 'CmdOrCtrl+Z',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'undo')
+        },
+        {
+          label: 'Delete All Marked Videos',
+          accelerator: 'CmdOrCtrl+Backspace',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'delete-all')
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+Plus',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-in')
+        },
+        {
+          label: 'Zoom In (Alt)',
+          accelerator: 'CmdOrCtrl+=',
+          visible: false,
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-in')
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-out')
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'togglefullscreen' },
+        { role: 'toggledevtools' }
+      ]
+    },
+    {
+      label: 'Video',
+      submenu: [
+        {
+          label: 'Reveal in Explorer',
+          accelerator: 'CmdOrCtrl+E',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'reveal-video')
+        },
+        {
+          label: 'Play Externally',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'play-external')
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -90,7 +248,8 @@ async function saveCache(dirPath, videos) {
       path: v.path,
       sizeBytes: v.sizeBytes,
       durationSecs: v.durationSecs,
-      modifiedAt: v.modifiedAt,
+      date: v.date ?? v.modifiedAt,
+      metadataDate: v.metadataDate || null,
       status: v.status,
       thumbnails: v.thumbnails,
       duplicateHash: v.duplicateHash || null,
@@ -145,9 +304,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         status: cached.status || 'pending',
         thumbnails: cached.thumbnails || [],
         duplicateHash: cached.duplicateHash || v.duplicateHash,
+        metadataDate: cached.metadataDate || null,
       };
     }
-    return { ...v, status: 'pending', thumbnails: [] };
+    return { ...v, status: 'pending', thumbnails: [], metadataDate: null };
   });
 
   return merged;
@@ -162,8 +322,8 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
 
   await processVideos(needThumbs, thumbDir, (progress) => {
     mainWindow.webContents.send('thumb-progress', progress);
-  }, (videoId, thumbnails, durationSecs) => {
-    mainWindow.webContents.send('thumb-ready', { videoId, thumbnails, durationSecs });
+  }, (videoId, thumbnails, durationSecs, creationTime) => {
+    mainWindow.webContents.send('thumb-ready', { videoId, thumbnails, durationSecs, metadataDate: creationTime });
   });
 
   return true;
@@ -176,9 +336,29 @@ ipcMain.handle('cancel-generation', async () => {
 });
 
 // 5. Save cache
-ipcMain.handle('save-cache', async (_event, dirPath, videos) => {
-  await saveCache(dirPath, videos);
-  return true;
+ipcMain.handle('save-cache', async (event, dirPath, videos) => {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    await saveCache(dirPath, videos);
+    return true;
+  } catch (err) {
+    console.error('Error saving cache:', err);
+    return false;
+  }
+});
+
+ipcMain.handle('clear-cache', async (event, dirPath) => {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    const cachePath = path.join(dirPath, CACHE_FILE);
+    await fs.unlink(cachePath);
+    return true;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.error('Error clearing cache:', err);
+    }
+    return false;
+  }
 });
 
 // 6. Batch delete → OS Trash, with permanent delete fallback for network drives

@@ -36,6 +36,12 @@ export default function Sidebar({ onRescan }: SidebarProps) {
   const videos = useStore((s) => s.videos);
   const cardScale = useStore((s) => s.cardScale);
   const setCardScale = useStore((s) => s.setCardScale);
+  const groupByFolder = useStore((s) => s.groupByFolder);
+  const setGroupByFolder = useStore((s) => s.setGroupByFolder);
+  const folderSortBy = useStore((s) => s.folderSortBy);
+  const setFolderSortBy = useStore((s) => s.setFolderSortBy);
+  const folderSortOrder = useStore((s) => s.folderSortOrder);
+  const setFolderSortOrder = useStore((s) => s.setFolderSortOrder);
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -222,25 +228,82 @@ export default function Sidebar({ onRescan }: SidebarProps) {
           <h3 className="sidebar-section-title">
             <ArrowUpDown size={14} /> Sort
           </h3>
-          <div className="sort-row">
-            <select
-              className="sidebar-select"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
-            >
-              <option value="name">Name</option>
-              <option value="size">Size</option>
-              <option value="duration">Duration</option>
-              <option value="date">Date</option>
-            </select>
-            <button
-              className="btn btn-icon"
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-            >
-              <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
-            </button>
-          </div>
+
+          <button
+            className={`btn btn-toggle ${groupByFolder ? 'btn-toggle-active' : ''}`}
+            onClick={() => setGroupByFolder(!groupByFolder)}
+            title="Group videos by subfolder"
+          >
+            <FolderOpen size={14} />
+            Group by folder
+          </button>
+
+          {groupByFolder ? (
+            <div className="sort-nested-options">
+              <div className="sort-group">
+                <span className="sort-label">Folder order</span>
+                <div className="sort-row">
+                  <select
+                    className="sidebar-select"
+                    value={folderSortBy}
+                    onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
+                  >
+                    <option value="name">Name</option>
+                    <option value="size">Size</option>
+                  </select>
+                  <button
+                    className="btn btn-icon"
+                    onClick={() => setFolderSortOrder(folderSortOrder === 'asc' ? 'desc' : 'asc')}
+                    title={folderSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                  >
+                    <ArrowUpDown size={14} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                  </button>
+                </div>
+              </div>
+              <div className="sort-group">
+                <span className="sort-label">Within folder</span>
+                <div className="sort-row">
+                  <select
+                    className="sidebar-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
+                  >
+                    <option value="name">Name</option>
+                    <option value="size">Size</option>
+                    <option value="duration">Duration</option>
+                    <option value="date">Date</option>
+                  </select>
+                  <button
+                    className="btn btn-icon"
+                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                    title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                  >
+                    <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="sort-row">
+              <select
+                className="sidebar-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
+              >
+                <option value="name">Name</option>
+                <option value="size">Size</option>
+                <option value="duration">Duration</option>
+                <option value="date">Date</option>
+              </select>
+              <button
+                className="btn btn-icon"
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+              </button>
+            </div>
+          )}
         </section>
       )}
 

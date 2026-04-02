@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate } from '../utils';
@@ -6,7 +6,13 @@ import {
   Check, Trash2, SkipForward, Undo2, X, Play,
   ChevronLeft, ChevronRight, HardDrive, Clock, Calendar
 } from 'lucide-react';
+import '@videojs/react/video/skin.css';
+import { createPlayer, videoFeatures } from '@videojs/react';
+import { VideoSkin, Video } from '@videojs/react/video';
+import { isWebSupported } from '../utils';
 import './ReviewMode.css';
+
+const Player = createPlayer({ features: videoFeatures });
 
 export default function ReviewMode() {
   const filteredVideos = useStore((s) => s.filteredVideos);
@@ -19,6 +25,19 @@ export default function ReviewMode() {
 
   const video = filteredVideos[reviewIndex] ?? null;
   const total = filteredVideos.length;
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const isSupported = useMemo(() => {
+    if (!video) return false;
+    return isWebSupported(video.path);
+  }, [video]);
+
+  // Reset playing state when video changes
+  useEffect(() => {
+    setIsPlaying(false);
+  }, [video?.id]);
 
   const advance = useCallback(() => {
     if (reviewIndex < total - 1) {
@@ -53,10 +72,13 @@ export default function ReviewMode() {
   }, [undo]);
 
   const handlePlay = useCallback(() => {
-    if (video && window.electronAPI) {
+    if (!video) return;
+    if (isSupported) {
+      setIsPlaying((prev) => !prev);
+    } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
     }
-  }, [video]);
+  }, [video, isSupported]);
 
   const close = useCallback(() => {
     setReviewMode(false);
@@ -79,7 +101,7 @@ export default function ReviewMode() {
         case 's':
         case ' ':
           e.preventDefault();
-          skip();
+          handlePlay();
           break;
         case 'z':
           e.preventDefault();
@@ -87,26 +109,44 @@ export default function ReviewMode() {
           break;
         case 'escape':
           e.preventDefault();
-          close();
+          if (isPlaying) {
+            setIsPlaying(false);
+          } else {
+            close();
+          }
           break;
         case 'arrowleft':
           e.preventDefault();
-          goBack();
+          if (isPlaying && videoRef.current) {
+            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+          } else {
+            goBack();
+          }
           break;
         case 'arrowright':
           e.preventDefault();
-          advance();
+          if (isPlaying && videoRef.current) {
+            // Note: HTMLMediaElement doesn't have a reliable end bounds check before setting, 
+            // but setting beyond duration caps to duration.
+            videoRef.current.currentTime += 5;
+          } else {
+            advance();
+          }
           break;
         case 'enter':
           e.preventDefault();
-          handlePlay();
+          if (e.ctrlKey && window.electronAPI) {
+            window.electronAPI.openVideo(video.path);
+          } else {
+            handlePlay();
+          }
           break;
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [markKeep, markDelete, skip, handleUndo, close, goBack, advance, handlePlay]);
+  }, [markKeep, markDelete, skip, handleUndo, close, goBack, advance, handlePlay, isPlaying]);
 
   if (!video) {
     return (
@@ -139,15 +179,35 @@ export default function ReviewMode() {
       <div className="review-content">
         <button
           className="review-nav review-nav-left"
-          onClick={goBack}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            goBack();
+          }}
           disabled={reviewIndex === 0}
         >
           <ChevronLeft size={28} />
         </button>
 
         <div className="review-center">
-          <div className="review-thumbs">
-            <ThumbnailStrip thumbnails={video.thumbnails} osThumbnail={video.osThumbnail} />
+          <div className={`review-thumbs ${isPlaying ? 'playing' : ''}`}>
+            {isPlaying ? (
+              <Player.Provider>
+                <VideoSkin>
+                  <Video
+                    ref={videoRef}
+                    className="video-player"
+                    src={`video:///${video.path.split('\\').join('/')}`}
+                    autoPlay
+                    playsInline
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                    }}
+                  />
+                </VideoSkin>
+              </Player.Provider>
+            ) : (
+              <ThumbnailStrip thumbnails={video.thumbnails} osThumbnail={video.osThumbnail} />
+            )}
           </div>
 
           <div className="review-filename">{video.filename}</div>
@@ -163,14 +223,17 @@ export default function ReviewMode() {
             </span>
             <span className="review-meta-item">
               <Calendar size={13} />
-              {formatDate(video.modifiedAt)}
+              {formatDate(video.metadataDate || video.date)}
             </span>
           </div>
         </div>
 
         <button
           className="review-nav review-nav-right"
-          onClick={advance}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            advance();
+          }}
           disabled={reviewIndex >= total - 1}
         >
           <ChevronRight size={28} />

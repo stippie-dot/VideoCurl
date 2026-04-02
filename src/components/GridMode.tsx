@@ -1,20 +1,54 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
-import { FixedSizeGrid, type GridChildComponentProps } from 'react-window';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { VariableSizeList } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
+import { formatSize } from '../utils';
 import './GridMode.css';
 
-const BASE_CARD_WIDTH = 300;
-const BASE_CARD_HEIGHT = 240;
+const BASE_CARD_WIDTH = 450;
+const BASE_CARD_HEIGHT = 360;
 const GAP = 12;
+const HEADER_HEIGHT = 44;
+
+interface HeaderRow {
+  type: 'header';
+  label: string;
+  count: number;
+  totalSize: number;
+}
+
+interface CardsRow {
+  type: 'cards';
+  videos: Video[];
+}
+
+type RowItem = HeaderRow | CardsRow;
+
+/** Extract display-friendly folder name relative to root directory */
+function getFolderLabel(video: Video, rootDir: string | null): string {
+  const sep = video.path.includes('/') ? '/' : '\\';
+  const dir = video.path.substring(0, video.path.lastIndexOf(sep));
+
+  if (!rootDir) return dir;
+
+  // Show relative path from root, or "Root" for top-level
+  if (dir === rootDir) return 'Root';
+  const relative = dir.startsWith(rootDir + sep)
+    ? dir.substring(rootDir.length + 1)
+    : dir;
+  return relative || 'Root';
+}
 
 export default function GridMode() {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const cardScale = useStore((s) => s.cardScale);
+  const groupByFolder = useStore((s) => s.groupByFolder);
+  const directory = useStore((s) => s.directory);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<VariableSizeList>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   const cardWidth = Math.round(BASE_CARD_WIDTH * cardScale);
@@ -32,8 +66,62 @@ export default function GridMode() {
   }, []);
 
   const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (cardWidth + GAP)));
-  const columnWidth = (dimensions.width - GAP * (columnCount + 1)) / columnCount;
-  const rowCount = Math.ceil(filteredVideos.length / columnCount);
+
+  // Build flat row items: headers + card rows
+  const rows: RowItem[] = useMemo(() => {
+    if (!groupByFolder) {
+      // No grouping — just chunk into rows of cards
+      const result: RowItem[] = [];
+      for (let i = 0; i < filteredVideos.length; i += columnCount) {
+        result.push({ type: 'cards', videos: filteredVideos.slice(i, i + columnCount) });
+      }
+      return result;
+    }
+
+    // Group by folder
+    const groups: { label: string; videos: Video[] }[] = [];
+    let currentLabel: string | null = null;
+    let currentGroup: Video[] = [];
+
+    for (const video of filteredVideos) {
+      const label = getFolderLabel(video, directory);
+      if (label !== currentLabel) {
+        if (currentGroup.length > 0 && currentLabel !== null) {
+          groups.push({ label: currentLabel, videos: currentGroup });
+        }
+        currentLabel = label;
+        currentGroup = [video];
+      } else {
+        currentGroup.push(video);
+      }
+    }
+    if (currentGroup.length > 0 && currentLabel !== null) {
+      groups.push({ label: currentLabel, videos: currentGroup });
+    }
+
+    const result: RowItem[] = [];
+    for (const group of groups) {
+      // Only show headers if there are multiple groups
+      if (groups.length > 1) {
+        const totalSize = group.videos.reduce((sum, v) => sum + v.sizeBytes, 0);
+        result.push({ type: 'header', label: group.label, count: group.videos.length, totalSize });
+      }
+      for (let i = 0; i < group.videos.length; i += columnCount) {
+        result.push({ type: 'cards', videos: group.videos.slice(i, i + columnCount) });
+      }
+    }
+    return result;
+  }, [filteredVideos, columnCount, groupByFolder, directory]);
+
+  // Reset list cache when rows change
+  useEffect(() => {
+    listRef.current?.resetAfterIndex(0);
+  }, [rows]);
+
+  const getItemSize = useCallback(
+    (index: number) => rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
+    [rows, cardHeight]
+  );
 
   const handleCardClick = useCallback((video: Video) => {
     const idx = filteredVideos.findIndex((v) => v.id === video.id);
@@ -43,25 +131,43 @@ export default function GridMode() {
     }
   }, [filteredVideos, setReviewIndex, setReviewMode]);
 
-  const Cell = useCallback(({ columnIndex, rowIndex, style }: GridChildComponentProps) => {
-    const index = rowIndex * columnCount + columnIndex;
-    if (index >= filteredVideos.length) return null;
-    const video = filteredVideos[index];
+  const columnWidth = (dimensions.width - GAP * (columnCount + 1)) / columnCount;
 
-    const adjustedStyle: React.CSSProperties = {
-      ...style,
-      left: Number(style.left) + GAP,
-      top: Number(style.top) + GAP,
-      width: Number(style.width) - GAP,
-      height: Number(style.height) - GAP,
-    };
+  const Row = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const item = rows[index];
+
+    if (item.type === 'header') {
+      return (
+        <div style={style} className="grid-group-header">
+          <span className="grid-group-label">{item.label}</span>
+          <span className="grid-group-meta">
+            <span className="grid-group-count">{item.count}</span>
+            <span className="grid-group-size">{formatSize(item.totalSize)}</span>
+          </span>
+        </div>
+      );
+    }
 
     return (
-      <div style={adjustedStyle}>
-        <VideoCard video={video} onClick={handleCardClick} />
+      <div style={style} className="grid-card-row">
+        {item.videos.map((video, colIdx) => (
+          <div
+            key={video.id}
+            className="grid-card-cell"
+            style={{
+              width: columnWidth,
+              height: cardHeight,
+              marginLeft: colIdx === 0 ? GAP : GAP / 2,
+              marginRight: colIdx === item.videos.length - 1 ? GAP : GAP / 2,
+              paddingTop: GAP / 2,
+            }}
+          >
+            <VideoCard video={video} onClick={handleCardClick} />
+          </div>
+        ))}
       </div>
     );
-  }, [filteredVideos, columnCount, handleCardClick]);
+  }, [rows, columnWidth, cardHeight, handleCardClick]);
 
   return (
     <div className="grid-mode" ref={containerRef}>
@@ -70,17 +176,16 @@ export default function GridMode() {
           <p>No videos match your current filters.</p>
         </div>
       ) : (
-        <FixedSizeGrid
-          columnCount={columnCount}
-          columnWidth={columnWidth + GAP}
+        <VariableSizeList
+          ref={listRef}
           height={dimensions.height}
-          rowCount={rowCount}
-          rowHeight={cardHeight + GAP}
           width={dimensions.width}
-          overscanRowCount={3}
+          itemCount={rows.length}
+          itemSize={getItemSize}
+          overscanCount={5}
         >
-          {Cell}
-        </FixedSizeGrid>
+          {Row}
+        </VariableSizeList>
       )}
     </div>
   );

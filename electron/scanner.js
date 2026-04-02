@@ -58,7 +58,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
             filename: entry.name,
             path: fullPath,
             sizeBytes: stat.size,
-            modifiedAt: stat.mtimeMs,
+            date: stat.mtimeMs,
             durationSecs: null, // Will be filled by processor
             duplicateHash: makeDuplicateHash(stat.size, null),
             status: 'pending',

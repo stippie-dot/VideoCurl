@@ -34,3 +34,9 @@ export function formatDate(timestampMs: number | null | undefined): string {
     year: 'numeric',
   });
 }
+
+export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.m4v'];
+
+export function isWebSupported(path: string): boolean {
+  return WEB_SUPPORTED_EXTS.some((ext) => path.toLowerCase().endsWith(ext));
+}

@@ -2,10 +2,17 @@ import { create } from 'zustand';
 import type {
   Video, VideoStatus, VideoStats, VideoStore,
   ScanProgress, ThumbProgress, UndoEntry,
-  StatusFilter, SortField, SortOrder,
+  StatusFilter, SortField, SortOrder, FolderSortField,
 } from './types';
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'sortBy' | 'sortOrder'>): Video[] {
+function getFolder(v: Video): string {
+  const sep = v.path.includes('/') ? '/' : '\\';
+  const parts = v.path.split(sep);
+  // Return parent folder name (last directory component)
+  return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
+}
+
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   let filtered = [...state.videos];
 
   if (state.statusFilter !== 'all') {
@@ -16,24 +23,55 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
     filtered = filtered.filter((v) => v.sizeBytes >= state.minSizeFilter);
   }
 
-  filtered.sort((a, b) => {
-    let cmp = 0;
+  const getSortCmp = (a: Video, b: Video): number => {
     switch (state.sortBy) {
       case 'name':
-        cmp = a.filename.localeCompare(b.filename);
-        break;
+        return a.filename.localeCompare(b.filename);
       case 'size':
-        cmp = a.sizeBytes - b.sizeBytes;
-        break;
+        return a.sizeBytes - b.sizeBytes;
       case 'duration':
-        cmp = (a.durationSecs || 0) - (b.durationSecs || 0);
-        break;
-      case 'date':
-        cmp = (a.modifiedAt || 0) - (b.modifiedAt || 0);
-        break;
+        return (a.durationSecs || 0) - (b.durationSecs || 0);
+      case 'date': {
+        const dateA = a.metadataDate || a.date || 0;
+        const dateB = b.metadataDate || b.date || 0;
+        return dateA - dateB;
+      }
     }
-    return state.sortOrder === 'asc' ? cmp : -cmp;
-  });
+  };
+
+  if (state.groupByFolder) {
+    // Pre-compute folder sizes for size-based folder sorting
+    let folderSizeMap: Map<string, number> | null = null;
+    if (state.folderSortBy === 'size') {
+      folderSizeMap = new Map();
+      for (const v of filtered) {
+        const folder = getFolder(v);
+        folderSizeMap.set(folder, (folderSizeMap.get(folder) || 0) + v.sizeBytes);
+      }
+    }
+
+    filtered.sort((a, b) => {
+      const folderA = getFolder(a);
+      const folderB = getFolder(b);
+
+      let folderCmp = 0;
+      if (state.folderSortBy === 'size' && folderSizeMap) {
+        folderCmp = (folderSizeMap.get(folderA) || 0) - (folderSizeMap.get(folderB) || 0);
+      } else {
+        folderCmp = folderA.localeCompare(folderB);
+      }
+      if (folderCmp !== 0) return state.folderSortOrder === 'asc' ? folderCmp : -folderCmp;
+
+      // Within same folder, sort by selected field
+      const cmp = getSortCmp(a, b);
+      return state.sortOrder === 'asc' ? cmp : -cmp;
+    });
+  } else {
+    filtered.sort((a, b) => {
+      const cmp = getSortCmp(a, b);
+      return state.sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }
 
   return filtered;
 }
@@ -71,10 +109,14 @@ const useStore = create<VideoStore>((set, get) => ({
   sortBy: 'name',
   sortOrder: 'asc',
   minSizeFilter: 0,
+  groupByFolder: true,
+  folderSortBy: 'name',
+  folderSortOrder: 'asc',
 
   // ── View Mode ──
   reviewMode: false,
   reviewIndex: 0,
+  previewVideo: null,
 
   // ── Card sizing ──
   cardScale: 1,
@@ -99,9 +141,14 @@ const useStore = create<VideoStore>((set, get) => ({
     });
   },
 
-  updateVideoThumbnails: (videoId: string, thumbnails: string[], durationSecs?: number) => {
+  updateVideoThumbnails: (videoId: string, thumbnails: string[], durationSecs?: number, metadataDate?: number | null) => {
     const videos = get().videos.map((v) =>
-      v.id === videoId ? { ...v, thumbnails, durationSecs: durationSecs ?? v.durationSecs } : v
+      v.id === videoId ? {
+        ...v,
+        thumbnails,
+        durationSecs: durationSecs ?? v.durationSecs,
+        metadataDate: metadataDate ?? v.metadataDate,
+      } : v
     );
     const state = { ...get(), videos };
     set({
@@ -193,6 +240,21 @@ const useStore = create<VideoStore>((set, get) => ({
     set({ minSizeFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
+  setGroupByFolder: (groupByFolder: boolean) => {
+    const state = { ...get(), groupByFolder };
+    set({ groupByFolder, filteredVideos: computeFiltered(state) });
+  },
+
+  setFolderSortBy: (folderSortBy: FolderSortField) => {
+    const state = { ...get(), folderSortBy };
+    set({ folderSortBy, filteredVideos: computeFiltered(state) });
+  },
+
+  setFolderSortOrder: (folderSortOrder: SortOrder) => {
+    const state = { ...get(), folderSortOrder };
+    set({ folderSortOrder, filteredVideos: computeFiltered(state) });
+  },
+
   // ── Scanning state ──
   setIsScanning: (isScanning: boolean) => set({ isScanning }),
   setScanProgress: (scanProgress: ScanProgress) => set({ scanProgress }),
@@ -202,6 +264,7 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── View ──
   setReviewMode: (reviewMode: boolean) => set({ reviewMode }),
   setReviewIndex: (reviewIndex: number) => set({ reviewIndex }),
+  setPreviewVideo: (previewVideo: Video | null) => set({ previewVideo }),
   setCardScale: (cardScale: number) => set({ cardScale }),
 
   advanceReview: () => {

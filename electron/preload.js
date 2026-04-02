@@ -36,4 +36,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
+
+  // Menu events
+  onMenuAction: (callback) => {
+    const handler = (_event, action) => callback(action);
+    ipcRenderer.on('menu-action', handler);
+    return () => ipcRenderer.removeListener('menu-action', handler);
+  },
 });

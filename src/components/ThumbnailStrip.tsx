@@ -2,11 +2,25 @@ import './ThumbnailStrip.css';
 
 interface ThumbnailStripProps {
   thumbnails: string[];
+  osThumbnail?: string | null;
   compact?: boolean;
 }
 
-export default function ThumbnailStrip({ thumbnails, compact = false }: ThumbnailStripProps) {
+export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = false }: ThumbnailStripProps) {
   if (!thumbnails || thumbnails.length === 0) {
+    if (osThumbnail) {
+      return (
+        <div className={`thumb-strip ${compact ? 'thumb-strip-compact' : ''}`}>
+          <img
+            className="thumb-img thumb-img-os"
+            src={osThumbnail}
+            draggable={false}
+            alt="OS Preview"
+            style={{ gridColumn: 'span 3', gridRow: 'span 2', objectFit: 'cover' }}
+          />
+        </div>
+      );
+    }
     return (
       <div className={`thumb-strip thumb-strip-placeholder ${compact ? 'thumb-strip-compact' : ''}`}>
         <div className="thumb-placeholder-pulse" />

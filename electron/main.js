@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
@@ -181,21 +181,84 @@ ipcMain.handle('save-cache', async (_event, dirPath, videos) => {
   return true;
 });
 
-// 6. Batch delete → OS Trash
+// 6. Batch delete → OS Trash, with permanent delete fallback for network drives
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
-  for (const filePath of filePaths) {
+  let useTrash = true;
+
+  // Test trash support on the first file
+  if (filePaths.length > 0) {
     try {
-      await shell.trashItem(filePath);
-      results.push({ path: filePath, success: true });
+      await shell.trashItem(filePaths[0]);
+      results.push({ path: filePaths[0], success: true, method: 'trash' });
     } catch (err) {
-      results.push({ path: filePath, success: false, error: err.message });
+      // Trash not supported — ask user before permanently deleting
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Recycle Bin not available',
+        message: `This drive does not support the Recycle Bin.\n\nDo you want to PERMANENTLY delete ${filePaths.length} files?\n\nThis action cannot be undone!`,
+        buttons: ['Cancel', 'Delete Permanently'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+
+      if (response === 0) {
+        // User cancelled
+        return results;
+      }
+
+      // User confirmed permanent delete — delete the first file
+      useTrash = false;
+      try {
+        await fs.unlink(filePaths[0]);
+        results.push({ path: filePaths[0], success: true, method: 'permanent' });
+      } catch (unlinkErr) {
+        results.push({ path: filePaths[0], success: false, error: unlinkErr.message });
+      }
+    }
+  }
+
+  // Process remaining files
+  for (let i = 1; i < filePaths.length; i++) {
+    const filePath = filePaths[i];
+    try {
+      if (useTrash) {
+        await shell.trashItem(filePath);
+        results.push({ path: filePath, success: true, method: 'trash' });
+      } else {
+        await fs.unlink(filePath);
+        results.push({ path: filePath, success: true, method: 'permanent' });
+      }
+    } catch (err) {
+      if (useTrash) {
+        // Fallback for this single file
+        try {
+          await fs.unlink(filePath);
+          results.push({ path: filePath, success: true, method: 'permanent' });
+        } catch (unlinkErr) {
+          results.push({ path: filePath, success: false, error: unlinkErr.message });
+        }
+      } else {
+        results.push({ path: filePath, success: false, error: err.message });
+      }
     }
   }
   return results;
 });
 
-// 7. Open video in default system player
+
+// 7. Get OS native thumbnail
+ipcMain.handle('get-os-thumbnail', async (_event, filePath) => {
+  try {
+    const thumb = await nativeImage.createThumbnailFromPath(filePath, { width: 300, height: 200 });
+    return thumb.toDataURL();
+  } catch (err) {
+    return null;
+  }
+});
+
+// 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
   await shell.openPath(filePath);
 });

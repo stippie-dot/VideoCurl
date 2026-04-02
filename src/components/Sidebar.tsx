@@ -4,7 +4,7 @@ import useStore from '../store';
 import { formatSize } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock
+  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, Maximize2
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -34,6 +34,8 @@ export default function Sidebar({ onRescan }: SidebarProps) {
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const videos = useStore((s) => s.videos);
+  const cardScale = useStore((s) => s.cardScale);
+  const setCardScale = useStore((s) => s.setCardScale);
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -238,6 +240,26 @@ export default function Sidebar({ onRescan }: SidebarProps) {
             >
               <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
             </button>
+          </div>
+        </section>
+      )}
+
+      {stats.total > 0 && (
+        <section className="sidebar-section">
+          <h3 className="sidebar-section-title">
+            <Maximize2 size={14} /> Card Size
+          </h3>
+          <div className="slider-row">
+            <input
+              type="range"
+              className="sidebar-slider"
+              min={0.6}
+              max={2}
+              step={0.1}
+              value={cardScale}
+              onChange={(e) => setCardScale(Number(e.target.value))}
+            />
+            <span className="slider-value">{Math.round(cardScale * 100)}%</span>
           </div>
         </section>
       )}

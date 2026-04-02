@@ -147,7 +147,7 @@ export default function ReviewMode() {
 
         <div className="review-center">
           <div className="review-thumbs">
-            <ThumbnailStrip thumbnails={video.thumbnails} />
+            <ThumbnailStrip thumbnails={video.thumbnails} osThumbnail={video.osThumbnail} />
           </div>
 
           <div className="review-filename">{video.filename}</div>

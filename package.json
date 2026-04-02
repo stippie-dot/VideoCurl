@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev:electron": "wait-on http://localhost:5173 && node -e \"setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
     "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
     "build": "vite build",
     "package": "vite build && electron-builder --win"

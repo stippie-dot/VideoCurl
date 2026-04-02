@@ -21,20 +21,34 @@ function getVideoDuration(filePath) {
 }
 
 /**
- * Calculate N evenly-spaced timestamps, skipping black intros.
+ * Calculate N evenly-spaced timestamps.
+ * Handles very short videos gracefully.
  */
 function calculateTimestamps(duration, count = THUMB_COUNT) {
   if (duration <= 0) return [0];
-  if (duration < 10) {
-    // Very short video: just take the midpoint
-    return [duration / 2];
+
+  // For very short videos (< 3 sec), take a single frame at 50%
+  if (duration < 3) {
+    return [duration * 0.5];
   }
 
+  // For short videos (3-15 sec), space frames evenly from 10% to 90%
+  if (duration < 15) {
+    const timestamps = [];
+    const actualCount = Math.min(count, Math.max(2, Math.floor(duration)));
+    const start = duration * 0.1;
+    const end = duration * 0.9;
+    const step = actualCount > 1 ? (end - start) / (actualCount - 1) : 0;
+    for (let i = 0; i < actualCount; i++) {
+      timestamps.push(Math.round((start + step * i) * 100) / 100);
+    }
+    return timestamps;
+  }
+
+  // Normal videos: skip first 3 sec or 3%, and end at 97%
   const timestamps = [];
-  // Start at 5% or 5 seconds (whichever is larger) to skip intros
-  const start = Math.max(5, duration * 0.05);
-  // End at 95%
-  const end = duration * 0.95;
+  const start = Math.max(3, duration * 0.03);
+  const end = duration * 0.97;
   const step = count > 1 ? (end - start) / (count - 1) : 0;
 
   for (let i = 0; i < count; i++) {
@@ -46,6 +60,7 @@ function calculateTimestamps(duration, count = THUMB_COUNT) {
 /**
  * Extract a single frame from a video at a given timestamp.
  * Uses fast seeking (-ss before -i) via fluent-ffmpeg's seekInput().
+ * Retries once at timestamp 0 if the first attempt fails.
  */
 function extractFrame(videoPath, timestamp, outputPath) {
   return new Promise((resolve, reject) => {
@@ -56,7 +71,22 @@ function extractFrame(videoPath, timestamp, outputPath) {
       .videoFilters(`scale=${THUMB_WIDTH}:-1`)
       .output(outputPath)
       .on('end', () => resolve(outputPath))
-      .on('error', (err) => reject(err))
+      .on('error', (err) => {
+        // Retry at timestamp 0 as fallback
+        if (timestamp > 0) {
+          ffmpeg(videoPath)
+            .seekInput(0)
+            .frames(1)
+            .outputOptions(['-q:v', '5'])
+            .videoFilters(`scale=${THUMB_WIDTH}:-1`)
+            .output(outputPath)
+            .on('end', () => resolve(outputPath))
+            .on('error', (retryErr) => reject(retryErr))
+            .run();
+        } else {
+          reject(err);
+        }
+      })
       .run();
   });
 }
@@ -69,25 +99,26 @@ async function generateThumbnailsForVideo(video, thumbDir) {
   const videoThumbDir = path.join(thumbDir, video.id);
   await fs.mkdir(videoThumbDir, { recursive: true });
 
-  // Check if thumbnails already exist
+  // Check if thumbnails already exist and are complete
   try {
     const existing = await fs.readdir(videoThumbDir);
     const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort();
     if (jpgs.length >= THUMB_COUNT) {
-      // Already done, just get duration
       let duration = video.durationSecs;
       if (!duration) {
-        try {
-          duration = await getVideoDuration(video.path);
-        } catch { duration = 0; }
+        try { duration = await getVideoDuration(video.path); } catch { duration = 0; }
       }
       return {
         thumbnails: jpgs.map((f) => path.join(videoThumbDir, f)),
         durationSecs: duration,
       };
     }
+    // Incomplete thumbnails — clean up and regenerate
+    for (const f of existing) {
+      try { await fs.unlink(path.join(videoThumbDir, f)); } catch { /* ignore */ }
+    }
   } catch {
-    // Directory doesn't exist yet, will create
+    // Directory doesn't exist yet
   }
 
   // Get duration
@@ -106,10 +137,26 @@ async function generateThumbnailsForVideo(video, thumbDir) {
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
       await extractFrame(video.path, timestamps[i], outputPath);
-      thumbnails.push(outputPath);
+      // Verify the file was created and has content
+      const stat = await fs.stat(outputPath);
+      if (stat.size > 0) {
+        thumbnails.push(outputPath);
+      }
     } catch {
-      // If a single frame fails, skip it
+      // Frame extraction failed — continue with remaining frames
     }
+  }
+
+  // If we got zero thumbnails, try one last desperate attempt at timestamp 0
+  if (thumbnails.length === 0) {
+    const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
+    try {
+      await extractFrame(video.path, 0, fallbackPath);
+      const stat = await fs.stat(fallbackPath);
+      if (stat.size > 0) {
+        thumbnails.push(fallbackPath);
+      }
+    } catch { /* truly can't generate thumbnails for this video */ }
   }
 
   return { thumbnails, durationSecs: duration };
@@ -117,17 +164,12 @@ async function generateThumbnailsForVideo(video, thumbDir) {
 
 /**
  * Process a batch of videos with limited concurrency.
- * @param {Array} videos - Videos that need thumbnails.
- * @param {string} thumbDir - Path to .video-cull-thumbs directory.
- * @param {function} onProgress - Called with { current, total }.
- * @param {function} onVideoReady - Called with (videoId, thumbnails[], durationSecs) per completed video.
  */
 async function processVideos(videos, thumbDir, onProgress, onVideoReady) {
   cancelled = false;
   const total = videos.length;
   let current = 0;
 
-  // Simple concurrency limiter
   const queue = [...videos];
   const workers = [];
 

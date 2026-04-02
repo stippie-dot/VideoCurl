@@ -76,6 +76,9 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewMode: false,
   reviewIndex: 0,
 
+  // ── Card sizing ──
+  cardScale: 1,
+
   // ── Undo stack ──
   undoStack: [],
 
@@ -105,6 +108,16 @@ const useStore = create<VideoStore>((set, get) => ({
       videos,
       filteredVideos: computeFiltered(state),
       stats: computeStats(videos),
+    });
+  },
+
+  setOSThumbnail: (videoId: string, osThumbnail: string) => {
+    const videos = get().videos.map((v) =>
+      v.id === videoId ? { ...v, osThumbnail } : v
+    );
+    set({
+      videos,
+      filteredVideos: computeFiltered({ ...get(), videos }),
     });
   },
 
@@ -189,6 +202,7 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── View ──
   setReviewMode: (reviewMode: boolean) => set({ reviewMode }),
   setReviewIndex: (reviewIndex: number) => set({ reviewIndex }),
+  setCardScale: (cardScale: number) => set({ cardScale }),
 
   advanceReview: () => {
     const { reviewIndex, filteredVideos } = get();

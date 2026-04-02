@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateThumbnails: (videos, dirPath) =>
     ipcRenderer.invoke('generate-thumbnails', videos, dirPath),
   cancelGeneration: () => ipcRenderer.invoke('cancel-generation'),
+  getOSThumbnail: (filePath) => ipcRenderer.invoke('get-os-thumbnail', filePath),
   onThumbProgress: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('thumb-progress', handler);

@@ -5,16 +5,20 @@ import useStore from '../store';
 import VideoCard from './VideoCard';
 import './GridMode.css';
 
-const CARD_MIN_WIDTH = 300;
-const CARD_HEIGHT = 260;
+const BASE_CARD_WIDTH = 300;
+const BASE_CARD_HEIGHT = 240;
 const GAP = 12;
 
 export default function GridMode() {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
+  const cardScale = useStore((s) => s.cardScale);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  const cardWidth = Math.round(BASE_CARD_WIDTH * cardScale);
+  const cardHeight = Math.round(BASE_CARD_HEIGHT * cardScale);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -27,7 +31,7 @@ export default function GridMode() {
     return () => observer.disconnect();
   }, []);
 
-  const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (CARD_MIN_WIDTH + GAP)));
+  const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (cardWidth + GAP)));
   const columnWidth = (dimensions.width - GAP * (columnCount + 1)) / columnCount;
   const rowCount = Math.ceil(filteredVideos.length / columnCount);
 
@@ -71,7 +75,7 @@ export default function GridMode() {
           columnWidth={columnWidth + GAP}
           height={dimensions.height}
           rowCount={rowCount}
-          rowHeight={CARD_HEIGHT + GAP}
+          rowHeight={cardHeight + GAP}
           width={dimensions.width}
           overscanRowCount={3}
         >

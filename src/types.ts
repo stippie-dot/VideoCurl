@@ -12,6 +12,7 @@ export interface Video {
   duplicateHash: string | null;
   status: VideoStatus;
   thumbnails: string[];
+  osThumbnail?: string | null;
 }
 
 // ── Progress Events ────────────────────────────────────────────────
@@ -88,6 +89,9 @@ export interface VideoStore {
   reviewMode: boolean;
   reviewIndex: number;
 
+  // Card sizing
+  cardScale: number;
+
   // Undo
   undoStack: UndoEntry[];
 
@@ -99,6 +103,7 @@ export interface VideoStore {
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnails: (videoId: string, thumbnails: string[], durationSecs?: number) => void;
+  setOSThumbnail: (videoId: string, thumbData: string) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
   undo: () => void;
   setStatusFilter: (filter: StatusFilter) => void;
@@ -111,6 +116,7 @@ export interface VideoStore {
   setGenProgress: (progress: ThumbProgress) => void;
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
+  setCardScale: (scale: number) => void;
   advanceReview: () => void;
   removeDeletedVideos: (deletedPaths: string[]) => void;
 }
@@ -123,6 +129,7 @@ export interface ElectronAPI {
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
   generateThumbnails: (videos: Video[], dirPath: string) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
+  getOSThumbnail: (filePath: string) => Promise<string | null>;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReady: (callback: (data: ThumbReadyEvent) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;

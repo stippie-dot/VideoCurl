@@ -1,15 +1,16 @@
 .thumb-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
   gap: 2px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--bg-surface);
-  aspect-ratio: 16 / 6;
 }
 
+/* In grid cards: fill the thumbnail area completely */
 .thumb-strip-compact {
-  aspect-ratio: 16 / 5.5;
+  height: 100%;
 }
 
 .thumb-img {
@@ -18,10 +19,17 @@
   object-fit: cover;
   display: block;
   transition: transform 200ms ease;
+  background: #0a0a12;
+}
+
+/* Limit the zoom caused by cover in tall cells */
+.thumb-strip-compact .thumb-img {
+  object-fit: contain;
+  background: #0a0a12;
 }
 
 .thumb-img:hover {
-  transform: scale(1.08);
+  transform: scale(1.05);
   z-index: 1;
   position: relative;
 }
@@ -53,4 +61,9 @@
 @keyframes pulse-sweep {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ── OS thumbnail placeholder (single image) ── */
+.thumb-img-os {
+  object-fit: cover !important;
 }

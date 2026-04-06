@@ -14,15 +14,15 @@ When you're done, one command sends everything marked for deletion to the Recycl
 
 ![Welcome screen](docs/screenshots/01-welcome.png)
 
-![Grid view](docs/screenshots/02-grid-view.png)
+![Grid view](docs/screenshots/02-grid-view-large.png)
 
-![Grid view — larger cards](docs/screenshots/03-grid-view-large.png)
+![Deletions selected](docs/screenshots/03-deletions-selected.png)
 
-![Review mode — thumbnail strip](docs/screenshots/04-review-thumbnails.png)
+![Review mode — thumbnail strip](docs/screenshots/04-review-tumbnail.png)
 
 ![Review mode — in-app player](docs/screenshots/05-review-player.png)
 
-![Settings — General](docs/screenshots/06-settings-general.png)
+![Settings — General](docs/screenshots/06-settings.png)
 
 ![Settings — Advanced](docs/screenshots/07-settings-advanced.png)
 

@@ -9,6 +9,20 @@ const isDev = !app.isPackaged;
 let mainWindow;
 let currentScanDir = null;
 
+// Set of known valid video paths, populated on every scan-directory call.
+// All IPC handlers that accept file paths validate against this set.
+const knownVideoPaths = new Set();
+
+/**
+ * Returns true if `candidate` resolves to `baseDir` or a path inside it.
+ * Uses path.resolve to prevent substring and path-traversal bypass attacks.
+ */
+function isPathWithinDir(candidate, baseDir) {
+  const resolved = path.resolve(candidate);
+  const resolvedBase = path.resolve(baseDir);
+  return resolved === resolvedBase || resolved.startsWith(resolvedBase + path.sep);
+}
+
 // ── Window ──────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -44,15 +58,22 @@ app.whenReady().then(() => {
   protocol.handle('thumb', async (request) => {
     // thumb:///D:/path/to/.video-cull-thumbs/id/thumb.jpg
     let filePath = decodeURIComponent(request.url.slice('thumb:///'.length));
-    
-    // Security: Only allow files ending in .jpg and located within a .video-cull-thumbs directory
-    if (!filePath.toLowerCase().endsWith('.jpg') || !filePath.includes('.video-cull-thumbs')) {
-      return new Response('Access Denied', { status: 403 });
-    }
 
     // On Windows, ensure the path starts with drive letter
     if (process.platform === 'win32' && !filePath.match(/^[a-zA-Z]:/)) {
       filePath = filePath.replace(/^\//, '');
+    }
+
+    // Security: only serve .jpg files inside the current scan dir's thumb folder
+    if (!filePath.toLowerCase().endsWith('.jpg')) {
+      return new Response('Access Denied', { status: 403 });
+    }
+    if (!currentScanDir) {
+      return new Response('Access Denied', { status: 403 });
+    }
+    const expectedThumbDir = path.join(currentScanDir, THUMB_DIR);
+    if (!isPathWithinDir(filePath, expectedThumbDir)) {
+      return new Response('Access Denied', { status: 403 });
     }
     
     try {
@@ -76,7 +97,12 @@ app.whenReady().then(() => {
     if (process.platform === 'win32' && !filePath.match(/^[a-zA-Z]:/)) {
       filePath = filePath.replace(/^\//, '');
     }
-    
+
+    // Security: only serve files inside the current scan directory
+    if (!currentScanDir || !isPathWithinDir(filePath, currentScanDir)) {
+      return new Response('Access Denied', { status: 403 });
+    }
+
     try {
       const { createReadStream, statSync } = require('fs');
       // For video streaming we need to manually handle range requests to support seeking.
@@ -216,7 +242,7 @@ function setApplicationMenu() {
         { type: 'separator' },
         { role: 'reload' },
         { role: 'togglefullscreen' },
-        { role: 'toggledevtools' }
+        ...(isDev ? [{ role: 'toggledevtools' }] : [])
       ]
     },
     {
@@ -328,11 +354,37 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     return { ...v, status: 'pending', thumbnails: [], metadataDate: null };
   });
 
+  // Populate the known-paths whitelist for this scan session
+  knownVideoPaths.clear();
+  merged.forEach((v) => knownVideoPaths.add(v.path));
+
   return merged;
 });
 
+// Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
+const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
+
 // 3. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
+  // Security: validate that dirPath matches the current scan directory
+  if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
+    console.warn('generate-thumbnails: dirPath does not match currentScanDir, rejecting');
+    return false;
+  }
+
+  // Security: filter out any video with an invalid id or a path not in the known set
+  const safeVideos = videos.filter((v) => {
+    if (!VALID_VIDEO_ID.test(v.id)) {
+      console.warn(`generate-thumbnails: rejected video with invalid id: ${v.id}`);
+      return false;
+    }
+    if (!knownVideoPaths.has(v.path)) {
+      console.warn(`generate-thumbnails: rejected unknown path: ${v.path}`);
+      return false;
+    }
+    return true;
+  });
+
   const thumbDir = path.join(dirPath, THUMB_DIR);
   await fs.mkdir(thumbDir, { recursive: true });
 
@@ -345,7 +397,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   }
 
   const THUMB_COUNT = config.thumbsPerVideo || 6;
-  const needThumbs = videos.filter((v) => !v.thumbnails || v.thumbnails.length !== THUMB_COUNT);
+  const needThumbs = safeVideos.filter((v) => !v.thumbnails || v.thumbnails.length !== THUMB_COUNT);
 
   let readyBatch = [];
   let lastProgress = null;
@@ -395,7 +447,13 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
 
 ipcMain.handle('clear-cache', async (event, dirPath) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
-  
+
+  // Security: only allow clearing the cache of the currently scanned directory
+  if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
+    console.warn('clear-cache: dirPath does not match currentScanDir, rejecting');
+    return false;
+  }
+
   cancelProcessing();
   
   try {
@@ -427,6 +485,13 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
   let useTrash = true;
+
+  // Security: only allow deleting paths that were part of the last scan
+  const validPaths = filePaths.filter((p) => knownVideoPaths.has(p));
+  if (validPaths.length !== filePaths.length) {
+    console.warn(`batch-delete: ${filePaths.length - validPaths.length} path(s) rejected (not in known video set)`);
+  }
+  filePaths = validPaths;
 
   // Test trash support on the first file
   if (filePaths.length > 0) {
@@ -492,6 +557,7 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
 
 // 7. Get OS native thumbnail
 ipcMain.handle('get-os-thumbnail', async (_event, filePath) => {
+  if (!knownVideoPaths.has(filePath)) return null;
   try {
     const thumb = await nativeImage.createThumbnailFromPath(filePath, { width: 300, height: 200 });
     return thumb.toDataURL();
@@ -502,6 +568,7 @@ ipcMain.handle('get-os-thumbnail', async (_event, filePath) => {
 
 // 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
+  if (!knownVideoPaths.has(filePath)) return;
   await shell.openPath(filePath);
 });
 
@@ -529,7 +596,8 @@ ipcMain.handle('save-config', async (_event, config) => {
   }
 });
 
-// 8. Open a directory in explorer
+// 10. Open a directory in explorer
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
+  if (!knownVideoPaths.has(filePath) && !isPathWithinDir(filePath, currentScanDir)) return;
   shell.showItemInFolder(filePath);
 });

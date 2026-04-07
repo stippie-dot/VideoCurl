@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
 
-let cancelled = false;
+let currentToken = null;
 
 /**
  * Get video duration and creation_time via ffprobe.
@@ -66,10 +66,10 @@ const activeCommands = new Set();
  * Extract a single frame from a video at a given timestamp.
  * Uses fast seeking (-ss before -i) via fluent-ffmpeg's seekInput().
  */
-function extractFrame(videoPath, timestamp, outputPath, config) {
+function extractFrame(videoPath, timestamp, outputPath, config, token) {
   return new Promise((resolve, reject) => {
     let command = ffmpeg(videoPath).seekInput(timestamp).frames(1);
-    
+
     // Apply Hardware Acceleration flag if needed
     if (config.hardwareAccel) {
       command = command.inputOptions(['-hwaccel', 'auto']);
@@ -80,28 +80,28 @@ function extractFrame(videoPath, timestamp, outputPath, config) {
     if (config.cpuThreadsLimited !== false) {
       outOpts.push('-threads', '1');
     }
-    
+
     command = command.outputOptions(outOpts).videoFilters(`scale=320:-1`);
 
-    const runCommand = (cmd) => {
+    const runCommand = (cmd, retried = false) => {
       activeCommands.add(cmd);
       cmd.output(outputPath)
         .on('end', () => { activeCommands.delete(cmd); resolve(outputPath); })
         .on('error', (err) => {
           activeCommands.delete(cmd);
-          // Retry at timestamp 0 as fallback
-          if (timestamp > 0 && !cancelled) {
+          // Retry at timestamp 0 as fallback (only once, and only if not cancelled)
+          if (timestamp > 0 && !retried && !token.cancelled) {
             let retry = ffmpeg(videoPath).seekInput(0).frames(1);
             if (config.hardwareAccel) retry = retry.inputOptions(['-hwaccel', 'auto']);
             retry.outputOptions(outOpts).videoFilters(`scale=320:-1`);
-            runCommand(retry);
+            runCommand(retry, true);
           } else {
             reject(err);
           }
         })
         .run();
     };
-    
+
     runCommand(command);
   });
 }
@@ -110,7 +110,7 @@ function extractFrame(videoPath, timestamp, outputPath, config) {
  * Generate all thumbnails for a single video.
  * Returns { thumbnails: string[], durationSecs: number }.
  */
-async function generateThumbnailsForVideo(video, thumbDir, config) {
+async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   const THUMB_COUNT = config.thumbsPerVideo || 6;
   const skipDelay = config.skipIntroDelaySecs !== undefined ? config.skipIntroDelaySecs : 3;
 
@@ -161,10 +161,10 @@ async function generateThumbnailsForVideo(video, thumbDir, config) {
 
   // PARALLEL FRAME EXTRACTION 
   const extractPromises = timestamps.map(async (timestamp, i) => {
-    if (cancelled) return;
+    if (token.cancelled) return;
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
-      await extractFrame(video.path, timestamp, outputPath, config);
+      await extractFrame(video.path, timestamp, outputPath, config, token);
       const stat = await fs.stat(outputPath);
       if (stat.size > 0) {
         thumbnails.push({ index: i, path: outputPath });
@@ -176,7 +176,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config) {
 
   await Promise.all(extractPromises);
   
-  if (cancelled) throw new Error('Cancelled');
+  if (token.cancelled) throw new Error('Cancelled');
 
   // Sort back sequentially because parallel extraction arrives inherently out-of-order
   thumbnails.sort((a, b) => a.index - b.index);
@@ -201,7 +201,8 @@ async function generateThumbnailsForVideo(video, thumbDir, config) {
  * Process a batch of videos with limited concurrency.
  */
 async function processVideos(videos, thumbDir, config, onProgress, onVideoReady) {
-  cancelled = false;
+  const token = { cancelled: false };
+  currentToken = token;
   const total = videos.length;
   let current = 0;
 
@@ -214,17 +215,17 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
     // strictly prevent SSD Random-Read bottlenecks and RAM overflow on extreme workstations.
     concurrentLimit = Math.max(1, Math.min(12, Math.floor(os.cpus().length / 2)));
   } else if (config.maxConcurrent > 0) {
-    concurrentLimit = config.maxConcurrent;
+    concurrentLimit = Math.max(1, Math.min(16, config.maxConcurrent));
   }
 
   for (let i = 0; i < concurrentLimit; i++) {
     workers.push(
       (async () => {
-        while (queue.length > 0 && !cancelled) {
+        while (queue.length > 0 && !token.cancelled) {
           const video = queue.shift();
           if (!video) break;
           try {
-            const result = await generateThumbnailsForVideo(video, thumbDir, config);
+            const result = await generateThumbnailsForVideo(video, thumbDir, config, token);
             current++;
             if (onProgress) onProgress({ current, total });
             if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
@@ -242,7 +243,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
 }
 
 function cancelProcessing() {
-  cancelled = true;
+  if (currentToken) currentToken.cancelled = true;
   for (const cmd of activeCommands) {
     try {
       cmd.kill('SIGKILL');

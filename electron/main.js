@@ -1,3 +1,7 @@
+// Increase libuv thread pool so thumbnail reads don't starve the video stream.
+// Must be set before any I/O occurs (i.e. before the first require that does I/O).
+process.env.UV_THREADPOOL_SIZE = '16';
+
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -54,6 +58,31 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'video', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
 ]);
 
+// Concurrency limiter for thumbnail reads.
+// Caps parallel thumb:// reads at 6 so the video stream always has thread pool headroom.
+let activeThumbReads = 0;
+const thumbQueue = [];
+const MAX_THUMB_READS = 6;
+
+function readThumbFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      if (activeThumbReads < MAX_THUMB_READS) {
+        activeThumbReads++;
+        fs.readFile(filePath)
+          .then(resolve, reject)
+          .finally(() => {
+            activeThumbReads--;
+            if (thumbQueue.length > 0) thumbQueue.shift()();
+          });
+      } else {
+        thumbQueue.push(attempt);
+      }
+    };
+    attempt();
+  });
+}
+
 app.whenReady().then(() => {
   protocol.handle('thumb', async (request) => {
     // thumb:///D:/path/to/.video-cull-thumbs/id/thumb.jpg
@@ -77,7 +106,7 @@ app.whenReady().then(() => {
     }
     
     try {
-      const buffer = await require('fs').promises.readFile(filePath);
+      const buffer = await readThumbFile(filePath);
       return new Response(buffer, {
         status: 200,
         headers: {
@@ -104,11 +133,9 @@ app.whenReady().then(() => {
     }
 
     try {
-      const { createReadStream, statSync } = require('fs');
-      // For video streaming we need to manually handle range requests to support seeking.
-      // We use a large highWaterMark (5MB) to drastically reduce IPC overhead and prevent buffering.
+      const { createReadStream } = require('fs');
       const { Readable } = require('stream');
-      const stats = statSync(filePath);
+      const stats = await fs.stat(filePath);
       const fileSize = stats.size;
       const range = request.headers.get('range');
 

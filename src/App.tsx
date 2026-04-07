@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import useStore from './store';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
@@ -20,16 +20,27 @@ export default function App() {
   const setGenProgress = useStore((s) => s.setGenProgress);
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
+  const scanIdRef = useRef(0);
 
   // Scan directory when selected
   const handleScan = useCallback(async (dirPath: string) => {
     if (!window.electronAPI) return;
 
+    // Cancel any in-progress generation before starting fresh
+    await window.electronAPI.cancelGeneration();
+
+    const scanId = ++scanIdRef.current;
+
     setIsScanning(true);
+    setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
 
     try {
       const scannedVideos = await window.electronAPI.scanDirectory(dirPath, includeSubfolders);
+
+      // Discard result if a newer scan has already started
+      if (scanId !== scanIdRef.current) return;
+
       setVideos(scannedVideos);
       setIsScanning(false);
 
@@ -38,7 +49,7 @@ export default function App() {
         setIsGenerating(true);
         setGenProgress({ current: 0, total: needThumbs.length });
         await window.electronAPI.generateThumbnails(scannedVideos, dirPath);
-        setIsGenerating(false);
+        if (scanId === scanIdRef.current) setIsGenerating(false);
       }
     } catch (err) {
       console.error('Scan failed:', err);

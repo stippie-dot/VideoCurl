@@ -393,6 +393,9 @@ const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
 // 3. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
+  // Cancel any in-progress generation before starting a new one
+  cancelProcessing();
+
   // Security: validate that dirPath matches the current scan directory
   if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
     console.warn('generate-thumbnails: dirPath does not match currentScanDir, rejecting');

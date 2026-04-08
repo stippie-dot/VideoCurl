@@ -27,7 +27,9 @@ dist-ssr
 .video-cull-cache.json
 .video-cull-thumbs*/
 
-# Build output
-build/
+# Build output (keep installer assets)
+build/*
+!build/icon.png
+!build/installerSidebar.bmp
 release/
 testspace/

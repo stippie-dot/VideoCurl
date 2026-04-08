@@ -55,7 +55,8 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "publish": "never"
     },
     "nsis": {
       "oneClick": false,

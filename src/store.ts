@@ -312,6 +312,29 @@ const useStore = create<VideoStore>((set, get) => ({
     });
   },
 
+  addBookmark: (videoId, time) => {
+    const rounded = Math.round(time * 10) / 10;
+    const videos = get().videos.map((v) =>
+      v.id === videoId
+        ? { ...v, bookmarks: [...new Set([...(v.bookmarks ?? []), rounded])].sort((a, b) => a - b) }
+        : v
+    );
+    const dir = get().directory;
+    set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
+    if (dir && window.electronAPI) window.electronAPI.saveCache(dir, videos);
+  },
+
+  removeBookmark: (videoId, time) => {
+    const videos = get().videos.map((v) =>
+      v.id === videoId
+        ? { ...v, bookmarks: (v.bookmarks ?? []).filter((t) => t !== time) }
+        : v
+    );
+    const dir = get().directory;
+    set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
+    if (dir && window.electronAPI) window.electronAPI.saveCache(dir, videos);
+  },
+
   // ── Settings ──
   setIsSettingsModalOpen: (val: boolean) => set({ isSettingsModalOpen: val }),
   updateSettings: (newSettings) => {

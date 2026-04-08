@@ -4,6 +4,7 @@ const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
 const { scanDirectory } = require('./scanner');
 const { processVideos, cancelProcessing } = require('./processor');
+const log = require('./logger');
 
 const isDev = !app.isPackaged;
 let mainWindow;
@@ -15,12 +16,30 @@ const knownVideoPaths = new Set();
 
 /**
  * Returns true if `candidate` resolves to `baseDir` or a path inside it.
- * Uses path.resolve to prevent substring and path-traversal bypass attacks.
+ * First does a fast path.resolve check (catches ../ traversal), then follows
+ * symlinks with fs.realpath to prevent symlink-based directory traversal.
+ * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
+ * the path.resolve check is sufficient — the caller's file read will 404.
  */
-function isPathWithinDir(candidate, baseDir) {
+async function isPathWithinDir(candidate, baseDir) {
   const resolved = path.resolve(candidate);
   const resolvedBase = path.resolve(baseDir);
-  return resolved === resolvedBase || resolved.startsWith(resolvedBase + path.sep);
+
+  // Fast check: deny immediately if the normalised path escapes the base dir
+  if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
+    return false;
+  }
+
+  // Symlink check: follow real paths for files that exist
+  try {
+    const real = await fs.realpath(candidate);
+    const realBase = await fs.realpath(baseDir).catch(() => resolvedBase);
+    return real === realBase || real.startsWith(realBase + path.sep);
+  } catch {
+    // Candidate doesn't exist (e.g. thumbnail still being generated).
+    // path.resolve check above already passed — allow it through.
+    return true;
+  }
 }
 
 // ── Window ──────────────────────────────────────────────────────────────
@@ -72,7 +91,7 @@ app.whenReady().then(() => {
       return new Response('Access Denied', { status: 403 });
     }
     const expectedThumbDir = path.join(currentScanDir, THUMB_DIR);
-    if (!isPathWithinDir(filePath, expectedThumbDir)) {
+    if (!await isPathWithinDir(filePath, expectedThumbDir)) {
       return new Response('Access Denied', { status: 403 });
     }
     
@@ -99,7 +118,7 @@ app.whenReady().then(() => {
     }
 
     // Security: only serve files inside the current scan directory
-    if (!currentScanDir || !isPathWithinDir(filePath, currentScanDir)) {
+    if (!currentScanDir || !await isPathWithinDir(filePath, currentScanDir)) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -150,7 +169,7 @@ app.whenReady().then(() => {
         });
       }
     } catch (e) {
-      console.error('Video protocol error:', e);
+      log.error('[video://] Protocol error:', e);
       return new Response('Not Found', { status: 404 });
     }
   });
@@ -297,6 +316,7 @@ async function saveCache(dirPath, videos) {
       status: v.status,
       thumbnails: v.thumbnails,
       duplicateHash: v.duplicateHash || null,
+      bookmarks: v.bookmarks || [],
     })),
   };
   await fs.writeFile(path.join(dirPath, CACHE_FILE), JSON.stringify(cacheData, null, 2));
@@ -349,9 +369,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         thumbnails: cached.thumbnails || [],
         duplicateHash: cached.duplicateHash || v.duplicateHash,
         metadataDate: cached.metadataDate || null,
+        bookmarks: cached.bookmarks || [],
       };
     }
-    return { ...v, status: 'pending', thumbnails: [], metadataDate: null };
+    return { ...v, status: 'pending', thumbnails: [], metadataDate: null, bookmarks: [] };
   });
 
   // Populate the known-paths whitelist for this scan session
@@ -371,18 +392,18 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
 
   // Security: validate that dirPath matches the current scan directory
   if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
-    console.warn('generate-thumbnails: dirPath does not match currentScanDir, rejecting');
+    log.warn('[generate-thumbnails] dirPath does not match currentScanDir, rejecting');
     return false;
   }
 
   // Security: filter out any video with an invalid id or a path not in the known set
   const safeVideos = videos.filter((v) => {
     if (!VALID_VIDEO_ID.test(v.id)) {
-      console.warn(`generate-thumbnails: rejected video with invalid id: ${v.id}`);
+      log.warn(`[generate-thumbnails] Rejected video with invalid id: ${v.id}`);
       return false;
     }
     if (!knownVideoPaths.has(v.path)) {
-      console.warn(`generate-thumbnails: rejected unknown path: ${v.path}`);
+      log.warn(`[generate-thumbnails] Rejected unknown path: ${v.path}`);
       return false;
     }
     return true;
@@ -443,7 +464,7 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
     await saveCache(dirPath, videos);
     return true;
   } catch (err) {
-    console.error('Error saving cache:', err);
+    log.error('[save-cache] Error saving cache:', err);
     return false;
   }
 });
@@ -453,7 +474,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 
   // Security: only allow clearing the cache of the currently scanned directory
   if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
-    console.warn('clear-cache: dirPath does not match currentScanDir, rejecting');
+    log.warn('[clear-cache] dirPath does not match currentScanDir, rejecting');
     return false;
   }
 
@@ -479,7 +500,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
     }
     return true;
   } catch (err) {
-    console.error('Error clearing thumbs map:', err);
+    log.error('[clear-cache] Error clearing thumbs:', err);
     return false;
   }
 });
@@ -492,7 +513,7 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   // Security: only allow deleting paths that were part of the last scan
   const validPaths = filePaths.filter((p) => knownVideoPaths.has(p));
   if (validPaths.length !== filePaths.length) {
-    console.warn(`batch-delete: ${filePaths.length - validPaths.length} path(s) rejected (not in known video set)`);
+    log.warn(`[batch-delete] ${filePaths.length - validPaths.length} path(s) rejected (not in known video set)`);
   }
   filePaths = validPaths;
 
@@ -594,13 +615,13 @@ ipcMain.handle('save-config', async (_event, config) => {
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
     return true;
   } catch (e) {
-    console.error('Save config error:', e);
+    log.error('[save-config] Error saving config:', e);
     return false;
   }
 });
 
 // 10. Open a directory in explorer
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
-  if (!knownVideoPaths.has(filePath) && !isPathWithinDir(filePath, currentScanDir)) return;
+  if (!knownVideoPaths.has(filePath) && !await isPathWithinDir(filePath, currentScanDir)) return;
   shell.showItemInFolder(filePath);
 });

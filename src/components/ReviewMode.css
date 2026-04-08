@@ -78,6 +78,7 @@
 }
 
 .review-thumbs {
+  position: relative;
   width: 100%;
   max-width: 760px;
   border-radius: 12px;
@@ -218,6 +219,167 @@
 .review-btn-play:hover {
   background: var(--accent-dim) !important;
   color: var(--accent) !important;
+}
+
+/* ── Speed badge (overlay on video while playing) ── */
+.review-speed-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+/* ── Bookmark count badge (thumbnail view) ── */
+.review-bookmark-count {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--accent, #a78bfa);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Bookmark bar (shown while playing) ── */
+.review-bookmark-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  max-width: 760px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 8px 12px;
+  background: rgba(20, 20, 25, 0.6);
+  backdrop-filter: blur(12px);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.review-bookmark-bar::-webkit-scrollbar {
+  height: 4px;
+}
+.review-bookmark-bar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.review-bookmark-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.review-bookmark-btn:hover {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(251, 191, 36, 0.05) 100%);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.15);
+}
+
+.review-bookmark-btn:active {
+  transform: translateY(0);
+}
+
+/* Bookmark chips */
+.review-bookmark-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.review-bookmark-chip {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 20px;
+  overflow: hidden;
+  font-size: 11px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.05);
+}
+
+.review-bookmark-chip:hover {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: rgba(251, 191, 36, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(251, 191, 36, 0.15);
+}
+
+.chip-seek {
+  padding: 5px 10px;
+  color: #fbbf24;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+
+.chip-seek:hover {
+  color: #fff;
+}
+
+.chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 0;
+  opacity: 0;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-left: 1px solid transparent;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.review-bookmark-chip:hover .chip-remove {
+  width: 24px;
+  opacity: 1;
+  padding: 0 4px;
+  border-left-color: rgba(251, 191, 36, 0.3);
+}
+
+.chip-remove:hover {
+  background: rgba(255, 92, 108, 0.2);
+  color: #ff5c6c;
 }
 
 /* ── Finished ── */

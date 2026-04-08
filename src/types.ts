@@ -13,6 +13,7 @@ export interface Video {
   status: VideoStatus;
   thumbnails: string[];
   osThumbnail?: string | null;
+  bookmarks?: number[]; // seconds into the video
 }
 
 // ── Progress Events ────────────────────────────────────────────────
@@ -151,6 +152,8 @@ export interface VideoStore {
   setCardScale: (scale: number) => void;
   advanceReview: () => void;
   removeDeletedVideos: (deletedPaths: string[]) => void;
+  addBookmark: (videoId: string, time: number) => void;
+  removeBookmark: (videoId: string, time: number) => void;
 
   // Settings Actions
   setIsSettingsModalOpen: (val: boolean) => void;

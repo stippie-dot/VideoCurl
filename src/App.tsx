@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
@@ -6,6 +6,7 @@ import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
 import PreviewModal from './components/PreviewModal';
 import SettingsModal from './components/SettingsModal';
+import ShortcutsHelp from './components/ShortcutsHelp';
 import './App.css';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const scanIdRef = useRef(0);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Scan directory when selected
   const handleScan = useCallback(async (dirPath: string) => {
@@ -141,11 +143,23 @@ export default function App() {
       }
     });
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutsHelp((v) => !v);
+      } else if (e.key === 'Escape') {
+        setShowShortcutsHelp(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       unsub1();
       unsub2();
       unsub3();
       unsub4();
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan]);
 
@@ -159,6 +173,7 @@ export default function App() {
     <div className="app-layout">
       <SettingsModal />
       <PreviewModal />
+      {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
 
       {directory && <Sidebar onRescan={() => directory && handleScan(directory)} />}
 

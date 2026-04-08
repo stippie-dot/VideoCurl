@@ -36,7 +36,7 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
   }, []);
 
   const setVideoStatus = useStore((s) => s.setVideoStatus);
-  const setPreviewVideo = useStore((s) => s.setPreviewVideo);
+  const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
 
   const statusClass =
     video.status === 'keep' ? 'card-keep' :
@@ -57,7 +57,7 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isWeb && !e.ctrlKey) {
-      setPreviewVideo(video);
+      enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
     }
@@ -83,7 +83,7 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
           <button 
             className="card-action-btn card-play-btn" 
             onClick={handlePlay} 
-            title={isWeb ? "Quick Preview (Ctrl+Click for external player)" : "Play externally"}
+            title={isWeb ? "Play in review mode (Ctrl+Click for external player)" : "Play externally"}
           >
             <Play size={20} />
           </button>

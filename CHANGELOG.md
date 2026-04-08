@@ -2,6 +2,16 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.2.0] - 2026-04-09
+
+### Added
+- **Grid play button opens review mode** — clicking the play button on a video card now navigates directly to review mode and starts playback, instead of opening a separate preview modal.
+- **Fully configurable keybindings** — all shortcuts can now be recorded as real key combinations (Esc, Delete, Ctrl+key, etc.) in Settings → Keybindings. Includes conflict detection and a Reset to Defaults button.
+
+### Changed
+- Keybindings settings panel reorganised into logical groups (Navigation, Decisions, Playback, While Playing, Preview, Global).
+- "Play / Pause (Enter)" renamed to "Play / Pause (alternate)" to avoid implying the key is fixed.
+
 ## [1.1.0] - 2026-04-08
 
 ### Added

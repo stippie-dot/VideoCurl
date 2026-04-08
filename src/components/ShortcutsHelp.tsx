@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import useStore from '../store';
-import { FIXED_SHORTCUTS, CONFIGURABLE_SHORTCUTS, formatKey, type ShortcutGroup } from '../shortcuts';
+import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type ShortcutGroup } from '../keybinds';
+import type { Keybind } from '../keybinds';
 import './ShortcutsHelp.css';
 
 interface Props {
@@ -24,9 +25,9 @@ export default function ShortcutsHelp({ onClose }: Props) {
 
         <div className="shortcuts-body">
           {GROUPS.map((group) => {
+            const configurable = ALL_SHORTCUTS.filter((s) => s.group === group);
             const fixed = FIXED_SHORTCUTS.filter((s) => s.group === group);
-            const configurable = CONFIGURABLE_SHORTCUTS.filter((s) => s.group === group);
-            if (fixed.length === 0 && configurable.length === 0) return null;
+            if (configurable.length === 0 && fixed.length === 0) return null;
 
             return (
               <section key={group} className="shortcuts-group">
@@ -34,11 +35,18 @@ export default function ShortcutsHelp({ onClose }: Props) {
                 <table className="shortcuts-table">
                   <tbody>
                     {configurable.map((s) => (
-                      <tr key={s.settingKey}>
+                      <tr key={s.id}>
                         <td className="shortcuts-keys">
-                          <kbd>{formatKey(settings[s.settingKey])}</kbd>
+                          <kbd>{formatKeybind(settings[s.id] as Keybind)}</kbd>
                         </td>
-                        <td className="shortcuts-desc">{s.description}</td>
+                        <td className="shortcuts-desc">
+                          {s.description}
+                          {s.context && (
+                            <span className="shortcut-context">
+                              {s.context === 'playing' ? ' (playing)' : ' (not playing)'}
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {fixed.map((s, i) => (
@@ -57,7 +65,7 @@ export default function ShortcutsHelp({ onClose }: Props) {
         </div>
 
         <p className="shortcuts-hint">
-          Configurable keys can be changed in <strong>Settings</strong> (Ctrl+,)
+          All shortcuts can be changed in <strong>Settings → Keybindings</strong> (Ctrl+,)
         </p>
       </div>
     </div>

@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { X } from 'lucide-react';
+import { X, RotateCcw } from 'lucide-react';
 import type { AppSettings } from '../types';
+import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
+import { DEFAULT_KEYBINDS } from '../keybind-defaults';
+import type { Keybind } from '../keybinds';
+import KeybindInput from './KeybindInput';
 import './SettingsModal.css';
+
+const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 
 export default function SettingsModal() {
   const isOpen = useStore((s) => s.isSettingsModalOpen);
@@ -23,8 +29,16 @@ export default function SettingsModal() {
 
   if (!isOpen) return null;
 
-  const handleChange = (key: keyof AppSettings, val: any) => {
+  const handleChange = (key: keyof AppSettings, val: unknown) => {
     setLocalSettings((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const handleKeybind = (id: KeybindSettingKey, bind: Keybind) => {
+    setLocalSettings((prev) => ({ ...prev, [id]: bind }));
+  };
+
+  const resetKeybinds = () => {
+    setLocalSettings((prev) => ({ ...prev, ...DEFAULT_KEYBINDS }));
   };
 
   const handeSave = async () => {
@@ -32,6 +46,11 @@ export default function SettingsModal() {
     await saveSettings();
     close();
   };
+
+  // Build a Record<KeybindSettingKey, Keybind> from localSettings for conflict checks
+  const currentBinds = Object.fromEntries(
+    ALL_SHORTCUTS.map((s) => [s.id, localSettings[s.id] as Keybind])
+  ) as Record<KeybindSettingKey, Keybind>;
 
   return (
     <div className="settings-overlay">
@@ -66,7 +85,7 @@ export default function SettingsModal() {
                     <option value={6}>6 Frames</option>
                     <option value={9}>9 Frames</option>
                   </select>
-                  <span className="help-text">Number of preview shots extracted evenly per video. (Requires Clear Cache & Rescan to apply)</span>
+                  <span className="help-text">Number of preview shots extracted evenly per video. (Requires Clear Cache &amp; Rescan to apply)</span>
                 </div>
 
                 <div className="form-group">
@@ -104,22 +123,48 @@ export default function SettingsModal() {
 
             {activeTab === 'keybindings' && (
               <div className="settings-form">
-                <div className="form-group row">
-                  <label>Mark Keep</label>
-                  <input type="text" maxLength={1} value={localSettings.keyKeep} onChange={(e) => handleChange('keyKeep', e.target.value.toLowerCase())} className="key-input" />
+                <div className="keybind-header-row">
+                  <span className="help-text">Click a key to record a new shortcut. Escape cancels recording.</span>
+                  <button className="btn-reset-keybinds" onClick={resetKeybinds} title="Reset all keybinds to defaults">
+                    <RotateCcw size={13} />
+                    Reset defaults
+                  </button>
                 </div>
-                <div className="form-group row">
-                  <label>Mark Delete</label>
-                  <input type="text" maxLength={1} value={localSettings.keyDelete} onChange={(e) => handleChange('keyDelete', e.target.value.toLowerCase())} className="key-input" />
-                </div>
-                <div className="form-group row">
-                  <label>Skip (Next)</label>
-                  <input type="text" maxLength={1} value={localSettings.keySkip} onChange={(e) => handleChange('keySkip', e.target.value.toLowerCase())} className="key-input" />
-                </div>
-                <div className="form-group row">
-                  <label>Undo</label>
-                  <input type="text" maxLength={1} value={localSettings.keyUndo} onChange={(e) => handleChange('keyUndo', e.target.value.toLowerCase())} className="key-input" />
-                </div>
+
+                {KEYBIND_GROUPS.map((group) => {
+                  const shortcuts = ALL_SHORTCUTS.filter((s) => s.group === group);
+                  if (shortcuts.length === 0) return null;
+                  return (
+                    <div key={group} className="keybind-group">
+                      <h4 className="keybind-group-title">{group}</h4>
+                      {shortcuts.map((shortcut) => {
+                        const bind = localSettings[shortcut.id] as Keybind;
+                        const conflict = findConflict(shortcut.id, bind, currentBinds);
+                        return (
+                          <div key={shortcut.id} className="form-group row keybind-row">
+                            <label className="keybind-label">
+                              {shortcut.description}
+                              {shortcut.context && (
+                                <span className="keybind-context-tag">
+                                  {shortcut.context === 'playing' ? 'while playing' : 'not playing'}
+                                </span>
+                              )}
+                            </label>
+                            <KeybindInput
+                              value={bind}
+                              onChange={(newBind) => handleKeybind(shortcut.id, newBind)}
+                              conflict={conflict}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+                <p className="help-text" style={{ marginTop: 12 }}>
+                  <strong>Note:</strong> Esc always closes/stops. System shortcuts (Ctrl+O, F5, etc.) cannot be rebound here.
+                </p>
               </div>
             )}
 
@@ -127,8 +172,8 @@ export default function SettingsModal() {
               <div className="settings-form">
                 <div className="form-group">
                   <label>Concurrent Processing Limit</label>
-                  <select 
-                    value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent} 
+                  <select
+                    value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent}
                     onChange={(e) => handleChange('maxConcurrent', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
                   >
                     <option value="auto">Auto (Dynamically detect logical CPUs)</option>

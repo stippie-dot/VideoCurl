@@ -1,5 +1,6 @@
 import useStore from '../store';
 import { FolderOpen, Film, Settings } from 'lucide-react';
+import { formatKeybind } from '../keybinds';
 import './EmptyState.css';
 
 export default function EmptyState() {
@@ -42,10 +43,10 @@ export default function EmptyState() {
       </label>
 
       <div className="empty-shortcuts">
-        <span><kbd>{settings.keyKeep.toUpperCase()}</kbd> Keep</span>
-        <span><kbd>{settings.keyDelete.toUpperCase()}</kbd> Delete</span>
-        <span><kbd>{settings.keySkip.toUpperCase()}</kbd> Skip</span>
-        <span><kbd>{settings.keyUndo.toUpperCase()}</kbd> Undo</span>
+        <span><kbd>{formatKeybind(settings.keyKeep)}</kbd> Keep</span>
+        <span><kbd>{formatKeybind(settings.keyDelete)}</kbd> Delete</span>
+        <span><kbd>{formatKeybind(settings.keySkip)}</kbd> Skip</span>
+        <span><kbd>{formatKeybind(settings.keyUndo)}</kbd> Undo</span>
       </div>
     </div>
   );

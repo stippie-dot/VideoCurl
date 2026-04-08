@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
+import { matchesKeybind } from './keybinds';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
@@ -145,7 +146,9 @@ export default function App() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === '?') {
+      if (document.body.hasAttribute('data-capturing-keybind')) return;
+      const s = useStore.getState().settings;
+      if (matchesKeybind(e, s.keyShowHelp)) {
         e.preventDefault();
         setShowShortcutsHelp((v) => !v);
       } else if (e.key === 'Escape') {

@@ -4,6 +4,7 @@ import type {
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField,
 } from './types';
+import { DEFAULT_KEYBINDS, migrateSettings } from './keybind-defaults';
 
 function getFolder(v: Video): string {
   const sep = v.path.includes('/') ? '/' : '\\';
@@ -116,6 +117,7 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── View Mode ──
   reviewMode: false,
   reviewIndex: 0,
+  reviewAutoPlay: false,
   previewVideo: null,
 
   // ── Card sizing ──
@@ -136,11 +138,7 @@ const useStore = create<VideoStore>((set, get) => ({
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,
     hardwareAccel: true,
-    keyKeep: 'k',
-    keyDelete: 'd',
-    keySkip: 's',
-    keyUndo: 'z',
-    keyPlay: ' ',
+    ...DEFAULT_KEYBINDS,
   },
 
   // ── Statistics ──
@@ -289,6 +287,12 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── View ──
   setReviewMode: (reviewMode: boolean) => set({ reviewMode }),
   setReviewIndex: (reviewIndex: number) => set({ reviewIndex }),
+  setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
+  enterReviewAndPlay: (videoId: string) => {
+    const idx = get().filteredVideos.findIndex((v) => v.id === videoId);
+    if (idx < 0) return;
+    set({ reviewMode: true, reviewIndex: idx, reviewAutoPlay: true });
+  },
   setPreviewVideo: (previewVideo: Video | null) => set({ previewVideo }),
   setCardScale: (cardScale: number) => set({ cardScale }),
 
@@ -361,15 +365,16 @@ const useStore = create<VideoStore>((set, get) => ({
   },
   loadSettings: async () => {
     if (window.electronAPI) {
-      const s = await window.electronAPI.getConfig();
-      if (s) {
-        const fullSettings = { ...get().settings, ...s };
-        set({ 
+      const raw = await window.electronAPI.getConfig();
+      if (raw) {
+        const migrated = migrateSettings(raw as unknown as Record<string, unknown>);
+        const fullSettings = { ...get().settings, ...migrated };
+        set({
           settings: fullSettings,
           cardScale: fullSettings.defaultCardScale,
           sortBy: fullSettings.defaultSortBy,
           sortOrder: fullSettings.defaultSortOrder,
-          groupByFolder: fullSettings.defaultGroupByFolder
+          groupByFolder: fullSettings.defaultGroupByFolder,
         });
       }
     }

@@ -65,6 +65,8 @@ export interface UndoEntry {
 }
 
 // ── Settings ───────────────────────────────────────────────────────
+import type { Keybind } from './keybinds';
+
 export interface AppSettings {
   thumbsPerVideo: 1 | 2 | 4 | 6 | 9;
   defaultCardScale: number;
@@ -75,11 +77,28 @@ export interface AppSettings {
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
-  keyKeep: string;
-  keyDelete: string;
-  keySkip: string;
-  keyUndo: string;
-  keyPlay: string;
+  // Review mode — context-independent
+  keyKeep: Keybind;
+  keyDelete: Keybind;
+  keySkip: Keybind;
+  keyUndo: Keybind;
+  keyPlay: Keybind;
+  keyEnterPlay: Keybind;
+  keyExternalPlayer: Keybind;
+  // Review mode — not playing
+  keyPrevVideo: Keybind;
+  keyNextVideo: Keybind;
+  // Review mode — playing
+  keySeekBack: Keybind;
+  keySeekForward: Keybind;
+  keySpeedDown: Keybind;
+  keySpeedUp: Keybind;
+  keyBookmark: Keybind;
+  // Preview modal
+  keyPreviewSeekBack: Keybind;
+  keyPreviewSeekForward: Keybind;
+  // Global
+  keyShowHelp: Keybind;
 }
 
 // ── Store State ────────────────────────────────────────────────────
@@ -116,6 +135,7 @@ export interface VideoStore {
   // View Mode
   reviewMode: boolean;
   reviewIndex: number;
+  reviewAutoPlay: boolean;
   previewVideo: Video | null;
 
   // Card sizing
@@ -148,6 +168,8 @@ export interface VideoStore {
   setGenProgress: (progress: ThumbProgress) => void;
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
+  setReviewAutoPlay: (val: boolean) => void;
+  enterReviewAndPlay: (videoId: string) => void;
   setPreviewVideo: (video: Video | null) => void;
   setCardScale: (scale: number) => void;
   advanceReview: () => void;

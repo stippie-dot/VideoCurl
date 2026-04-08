@@ -1,0 +1,71 @@
+.keybind-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  position: relative;
+  text-align: center;
+  justify-content: center;
+}
+
+.keybind-input:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.keybind-input:focus {
+  outline: none;
+  border-color: var(--accent, #a78bfa);
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+}
+
+.keybind-input kbd {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+/* Recording state */
+.keybind-input.keybind-recording {
+  border-color: var(--accent, #a78bfa);
+  background: rgba(167, 139, 250, 0.1);
+  animation: keybind-pulse 1s ease-in-out infinite;
+}
+
+@keyframes keybind-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
+  50%       { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0); }
+}
+
+.keybind-recording-label {
+  font-size: 11px;
+  color: var(--accent, #a78bfa);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* Conflict state */
+.keybind-input.keybind-conflict {
+  border-color: rgba(251, 146, 60, 0.6);
+}
+
+.keybind-conflict-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fb923c;
+  flex-shrink: 0;
+}

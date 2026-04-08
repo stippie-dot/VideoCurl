@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import useStore from '../store';
 import { X } from 'lucide-react';
+import { matchesKeybind } from '../keybinds';
 import '@videojs/react/video/skin.css';
 import { createPlayer, videoFeatures } from '@videojs/react';
 import { VideoSkin, Video } from '@videojs/react/video';
@@ -20,26 +21,21 @@ export default function PreviewModal() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-
+      if (document.body.hasAttribute('data-capturing-keybind')) return;
       if (!previewVideo) return;
 
-      switch (e.key.toLowerCase()) {
-        case 'escape':
-          e.preventDefault();
-          close();
-          break;
-        case 'arrowleft':
-          e.preventDefault();
-          if (videoRef.current) {
-            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
-          }
-          break;
-        case 'arrowright':
-          e.preventDefault();
-          if (videoRef.current) {
-            videoRef.current.currentTime += 5;
-          }
-          break;
+      const s = useStore.getState().settings;
+
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (matchesKeybind(e, s.keyPreviewSeekBack)) {
+        e.preventDefault();
+        if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+        return;
+      }
+      if (matchesKeybind(e, s.keyPreviewSeekForward)) {
+        e.preventDefault();
+        if (videoRef.current) videoRef.current.currentTime += 5;
+        return;
       }
     };
 

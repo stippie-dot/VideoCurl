@@ -10,6 +10,7 @@ import '@videojs/react/video/minimal-skin.css';
 import { createPlayer, videoFeatures } from '@videojs/react';
 import { MinimalVideoSkin, Video } from '@videojs/react/video';
 import { isWebSupported } from '../utils';
+import { matchesKeybind, formatKeybind } from '../keybinds';
 import './ReviewMode.css';
 
 const Player = createPlayer({ features: videoFeatures });
@@ -51,6 +52,8 @@ export default function ReviewMode() {
   const total = filteredVideos.length;
   const bookmarks = video?.bookmarks ?? [];
 
+  // Capture auto-play intent at construction time (useRef initializer runs exactly once)
+  const autoPlayRef = useRef(useStore.getState().reviewAutoPlay);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -66,10 +69,19 @@ export default function ReviewMode() {
     return isWebSupported(video.path);
   }, [video]);
 
-  // Reset position when video changes, keep speed
+  // Reset position when video changes; auto-play on first mount if flagged
+  // Cleanup restores the ref so StrictMode's double-invocation sees the same value both times
   useEffect(() => {
-    setIsPlaying(false);
+    const shouldPlay = autoPlayRef.current;
+    if (shouldPlay) {
+      autoPlayRef.current = false;
+      useStore.getState().setReviewAutoPlay(false);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
     setCurrentTime(0);
+    return () => { autoPlayRef.current = shouldPlay; };
   }, [video?.id]);
 
   // When playback starts: apply persisted speed, then sync speed changes back from the player
@@ -138,78 +150,72 @@ export default function ReviewMode() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      // Stand down while the keybind recorder is capturing
+      if (document.body.hasAttribute('data-capturing-keybind')) return;
 
-      const key = e.key.toLowerCase();
-      const settings = useStore.getState().settings;
+      const s = useStore.getState().settings;
 
-      if (key === 'escape') {
+      // Escape is always hardcoded — not configurable
+      if (e.key === 'Escape') {
         e.preventDefault();
         if (isPlaying) setIsPlaying(false);
         else close();
         return;
       }
 
-      if (key === 'arrowleft') {
-        e.preventDefault();
-        if (isPlaying && videoRef.current) {
-          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
-        } else {
-          goBack();
+      // Playing-context shortcuts
+      if (isPlaying) {
+        if (matchesKeybind(e, s.keySeekBack)) {
+          e.preventDefault();
+          if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+          return;
         }
-        return;
-      }
-
-      if (key === 'arrowright') {
-        e.preventDefault();
-        if (isPlaying && videoRef.current) {
-          videoRef.current.currentTime += 5;
-        } else {
-          advance();
+        if (matchesKeybind(e, s.keySeekForward)) {
+          e.preventDefault();
+          if (videoRef.current) videoRef.current.currentTime += 5;
+          return;
         }
-        return;
-      }
-
-      if (key === 'enter') {
-        e.preventDefault();
-        if (e.ctrlKey && window.electronAPI && video?.path) {
-          window.electronAPI.openVideo(video.path);
-        } else {
-          handlePlay();
+        if (matchesKeybind(e, s.keySpeedDown)) {
+          e.preventDefault();
+          if (videoRef.current) {
+            const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+            const idx = speeds.indexOf(videoRef.current.playbackRate);
+            if (idx > 0) videoRef.current.playbackRate = speeds[idx - 1];
+          }
+          return;
         }
-        return;
-      }
-
-      if (key === '[') {
-        e.preventDefault();
-        if (videoRef.current) {
-          const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
-          const idx = speeds.indexOf(videoRef.current.playbackRate);
-          if (idx > 0) videoRef.current.playbackRate = speeds[idx - 1];
+        if (matchesKeybind(e, s.keySpeedUp)) {
+          e.preventDefault();
+          if (videoRef.current) {
+            const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+            const idx = speeds.indexOf(videoRef.current.playbackRate);
+            if (idx < speeds.length - 1) videoRef.current.playbackRate = speeds[idx + 1];
+          }
+          return;
         }
-        return;
-      }
-
-      if (key === ']') {
-        e.preventDefault();
-        if (videoRef.current) {
-          const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
-          const idx = speeds.indexOf(videoRef.current.playbackRate);
-          if (idx < speeds.length - 1) videoRef.current.playbackRate = speeds[idx + 1];
+        if (matchesKeybind(e, s.keyBookmark)) {
+          e.preventDefault();
+          addBookmarkNow();
+          return;
         }
-        return;
+      } else {
+        // Not-playing navigation
+        if (matchesKeybind(e, s.keyPrevVideo)) { e.preventDefault(); goBack(); return; }
+        if (matchesKeybind(e, s.keyNextVideo)) { e.preventDefault(); advance(); return; }
       }
 
-      if (key === 'b' && isPlaying) {
+      // Context-independent shortcuts
+      if (matchesKeybind(e, s.keyExternalPlayer)) {
         e.preventDefault();
-        addBookmarkNow();
+        if (window.electronAPI && video?.path) window.electronAPI.openVideo(video.path);
         return;
       }
-
-      if (key === settings.keyKeep) { e.preventDefault(); markKeep(); }
-      else if (key === settings.keyDelete || (settings.keyDelete === 'delete' && key === 'backspace')) { e.preventDefault(); markDelete(); }
-      else if (key === settings.keySkip) { e.preventDefault(); skip(); }
-      else if (key === settings.keyUndo) { e.preventDefault(); handleUndo(); }
-      else if (key === settings.keyPlay || (settings.keyPlay === ' ' && key === 'space')) { e.preventDefault(); handlePlay(); }
+      if (matchesKeybind(e, s.keyEnterPlay)) { e.preventDefault(); handlePlay(); return; }
+      if (matchesKeybind(e, s.keyKeep))      { e.preventDefault(); markKeep(); return; }
+      if (matchesKeybind(e, s.keyDelete))    { e.preventDefault(); markDelete(); return; }
+      if (matchesKeybind(e, s.keySkip))      { e.preventDefault(); skip(); return; }
+      if (matchesKeybind(e, s.keyUndo))      { e.preventDefault(); handleUndo(); return; }
+      if (matchesKeybind(e, s.keyPlay))      { e.preventDefault(); handlePlay(); return; }
     };
 
     window.addEventListener('keydown', handler);
@@ -335,35 +341,35 @@ export default function ReviewMode() {
           className="review-action-btn review-undo"
           onClick={handleUndo}
           disabled={undoStack.length === 0}
-          title={`Undo (${settings.keyUndo.toUpperCase()})`}
+          title={`Undo (${formatKeybind(settings.keyUndo)})`}
         >
           <Undo2 size={18} />
           <span>Undo</span>
-          <kbd>{settings.keyUndo.toUpperCase()}</kbd>
+          <kbd>{formatKeybind(settings.keyUndo)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-delete" onClick={markDelete} title={`Delete (${settings.keyDelete.toUpperCase()})`}>
+        <button className="review-action-btn review-btn-delete" onClick={markDelete} title={`Delete (${formatKeybind(settings.keyDelete)})`}>
           <Trash2 size={20} />
           <span>Delete</span>
-          <kbd>{settings.keyDelete.toUpperCase()}</kbd>
+          <kbd>{formatKeybind(settings.keyDelete)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-play" onClick={handlePlay} title={`Play (${settings.keyPlay === ' ' ? 'Space' : settings.keyPlay.toUpperCase()})`}>
+        <button className="review-action-btn review-btn-play" onClick={handlePlay} title={`Play (${formatKeybind(settings.keyPlay)})`}>
           <Play size={20} />
           <span>Play</span>
-          <kbd>{settings.keyPlay === ' ' ? '␣' : settings.keyPlay.toUpperCase()}</kbd>
+          <kbd>{formatKeybind(settings.keyPlay)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-skip" onClick={skip} title={`Skip (${settings.keySkip.toUpperCase()})`}>
+        <button className="review-action-btn review-btn-skip" onClick={skip} title={`Skip (${formatKeybind(settings.keySkip)})`}>
           <SkipForward size={20} />
           <span>Skip</span>
-          <kbd>{settings.keySkip.toUpperCase()}</kbd>
+          <kbd>{formatKeybind(settings.keySkip)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-keep" onClick={markKeep} title={`Keep (${settings.keyKeep.toUpperCase()})`}>
+        <button className="review-action-btn review-btn-keep" onClick={markKeep} title={`Keep (${formatKeybind(settings.keyKeep)})`}>
           <Check size={20} />
           <span>Keep</span>
-          <kbd>{settings.keyKeep.toUpperCase()}</kbd>
+          <kbd>{formatKeybind(settings.keyKeep)}</kbd>
         </button>
       </div>
     </div>

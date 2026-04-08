@@ -129,3 +129,5 @@
 .shortcuts-hint strong {
   color: #777;
 }
+
+.shortcut-context { font-size: 10px; color: var(--text-secondary); margin-left: 4px; }

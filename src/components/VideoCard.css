@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100%;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius-md); /* Reduced radius for pro-tool feel */
   overflow: hidden;
   cursor: pointer;
@@ -27,8 +27,8 @@
   border-color: var(--color-delete) !important;
   box-shadow: 0 0 0 1px rgba(255, 71, 87, 0.2), var(--shadow-sm);
   background: linear-gradient(180deg, rgba(255, 71, 87, 0.05), var(--bg-surface));
-  opacity: 0.6;
-  filter: grayscale(80%);
+  opacity: 0.7;
+  filter: grayscale(60%);
   transition: opacity var(--transition), filter var(--transition), transform var(--spring);
 }
 .card-delete:hover {
@@ -47,19 +47,15 @@
 
 .card-status-badge {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 6px;
+  right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   z-index: 2;
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: var(--blur-md);
-  -webkit-backdrop-filter: var(--blur-md);
-  border: 1px solid rgba(255,255,255,0.2);
   animation: badge-pop var(--spring);
 }
 @keyframes badge-pop {
@@ -69,14 +65,12 @@
 }
 
 .badge-keep {
-  background: rgba(0, 230, 150, 0.2);
-  color: var(--color-keep);
-  border-color: var(--color-keep);
+  background: var(--color-keep);
+  color: #fff;
 }
 .badge-delete {
-  background: rgba(255, 71, 87, 0.2);
-  color: var(--color-delete);
-  border-color: var(--color-delete);
+  background: var(--color-delete);
+  color: #fff;
 }
 
 /* ── Hover Overlay ── */
@@ -115,14 +109,13 @@
 
 /* ── Info ── */
 .card-info {
-  padding: 10px 12px 6px;
+  padding: 8px 10px 2px;
   flex-shrink: 0;
 }
 
 .card-filename {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.01em;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -145,8 +138,8 @@
 /* ── Action Buttons ── */
 .card-actions {
   display: flex;
-  gap: 6px;
-  padding: 8px 14px 12px;
+  gap: 4px;
+  padding: 4px 10px 8px;
   flex-shrink: 0;
 }
 
@@ -155,11 +148,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 0;
+  gap: 4px;
+  padding: 5px 0;
   border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   background: var(--bg-surface-hover);
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -185,10 +178,4 @@
   color: var(--color-delete);
   border-color: rgba(255, 71, 87, 0.3);
   box-shadow: inset 0 0 10px rgba(255, 71, 87, 0.1);
-}
-  color: var(--color-keep);
-}
-.card-btn-delete.active {
-  background: var(--color-delete-dim);
-  color: var(--color-delete);
 }

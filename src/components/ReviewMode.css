@@ -21,8 +21,9 @@
 /* ── Close ── */
 .review-close {
   position: absolute;
-  top: 24px;
+  top: 46px;
   right: 24px;
+  transform: translateY(-50%);
   width: 44px;
   height: 44px;
   display: flex;
@@ -41,16 +42,16 @@
 .review-close:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
-  transform: scale(1.05); /* Micro interaction */
+  transform: translateY(-50%) scale(1.05);
   border-color: var(--border-hover);
 }
 
 /* ── Counter ── */
 .review-counter {
   position: absolute;
-  top: 24px;
+  top: 46px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(-50%);
   font-size: 14px;
   font-weight: 500; /* Lighter weight for premium feel */
   color: var(--text-primary);

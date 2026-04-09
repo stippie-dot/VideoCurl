@@ -118,8 +118,6 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewMode: false,
   reviewIndex: 0,
   reviewAutoPlay: false,
-  previewVideo: null,
-
   // ── Card sizing ──
   cardScale: 1,
 
@@ -293,7 +291,6 @@ const useStore = create<VideoStore>((set, get) => ({
     if (idx < 0) return;
     set({ reviewMode: true, reviewIndex: idx, reviewAutoPlay: true });
   },
-  setPreviewVideo: (previewVideo: Video | null) => set({ previewVideo }),
   setCardScale: (cardScale: number) => set({ cardScale }),
 
   advanceReview: () => {

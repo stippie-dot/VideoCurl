@@ -5,7 +5,6 @@ import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
-import PreviewModal from './components/PreviewModal';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import './App.css';
@@ -175,7 +174,6 @@ export default function App() {
   return (
     <div className="app-layout">
       <SettingsModal />
-      <PreviewModal />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
 
       {directory && <Sidebar onRescan={() => directory && handleScan(directory)} />}
@@ -193,7 +191,6 @@ export default function App() {
         )}
       </main>
 
-      <PreviewModal />
       <SettingsModal />
     </div>
   );

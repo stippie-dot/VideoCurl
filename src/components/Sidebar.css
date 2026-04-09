@@ -8,11 +8,7 @@
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  backdrop-filter: var(--blur-md);
-  -webkit-backdrop-filter: var(--blur-md);
-  box-shadow: 1px 0 24px rgba(0, 0, 0, 0.2);
   z-index: 10;
-  transition: var(--transition);
 }
 
 /* ── Header ── */
@@ -168,13 +164,6 @@
   background: var(--color-delete);
   box-shadow: var(--color-delete-glow);
   color: #fff;
-}
-  background: var(--color-keep-dim);
-  color: var(--color-keep);
-}
-.pill-active.pill-delete {
-  background: var(--color-delete-dim);
-  color: var(--color-delete);
 }
 
 /* ── Select ── */

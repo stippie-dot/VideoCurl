@@ -136,8 +136,6 @@ export interface VideoStore {
   reviewMode: boolean;
   reviewIndex: number;
   reviewAutoPlay: boolean;
-  previewVideo: Video | null;
-
   // Card sizing
   cardScale: number;
 
@@ -170,7 +168,6 @@ export interface VideoStore {
   setReviewIndex: (idx: number) => void;
   setReviewAutoPlay: (val: boolean) => void;
   enterReviewAndPlay: (videoId: string) => void;
-  setPreviewVideo: (video: Video | null) => void;
   setCardScale: (scale: number) => void;
   advanceReview: () => void;
   removeDeletedVideos: (deletedPaths: string[]) => void;

@@ -4,18 +4,7 @@
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  /* Deep cinematic canvas behind the glowing glass */
-  background-color: var(--bg-app);
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(139, 122, 240, 0.15), transparent 40%),
-    radial-gradient(circle at 85% 30%, rgba(0, 250, 154, 0.08), transparent 40%),
-    radial-gradient(circle at 50% 100%, rgba(179, 93, 242, 0.1), transparent 50%);
-  animation: ambient-breathe 15s ease-in-out infinite alternate;
-}
-
-@keyframes ambient-breathe {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 5% 5%; }
+  background: var(--bg-app);
 }
 
 .app-main {

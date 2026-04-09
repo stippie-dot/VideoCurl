@@ -12,19 +12,23 @@ When you're done, one command sends everything marked for deletion to the Recycl
 
 ## Screenshots
 
-![Welcome screen](docs/screenshots/01-welcome.png)
-
-![Grid view](docs/screenshots/02-grid-view-large.png)
-
-![Deletions selected](docs/screenshots/03-deletions-selected.png)
-
-![Review mode — thumbnail strip](docs/screenshots/04-review-tumbnail.png)
-
-![Review mode — in-app player](docs/screenshots/05-review-player.png)
-
-![Settings — General](docs/screenshots/06-settings.png)
-
-![Settings — Advanced](docs/screenshots/07-settings-advanced.png)
+<table>
+<tr>
+  <td><img src="docs/screenshots/01-welcome.png" alt="Welcome screen"/></td>
+  <td><img src="docs/screenshots/02-grid-view-large.png" alt="Grid view"/></td>
+</tr>
+<tr>
+  <td><img src="docs/screenshots/03-deletions-selected.png" alt="Deletions selected"/></td>
+  <td><img src="docs/screenshots/04-review-tumbnail.png" alt="Review mode — thumbnail strip"/></td>
+</tr>
+<tr>
+  <td><img src="docs/screenshots/05-review-player.png" alt="Review mode — in-app player"/></td>
+  <td><img src="docs/screenshots/06-settings.png" alt="Settings — General"/></td>
+</tr>
+<tr>
+  <td colspan="2" align="center"><img src="docs/screenshots/07-settings-advanced.png" alt="Settings — Advanced" width="50%"/></td>
+</tr>
+</table>
 
 ---
 
@@ -57,6 +61,8 @@ A fullscreen, one-at-a-time view for when you actually want to pay attention. Ke
 - In-app video player with scrubbing support
 - Metadata at a glance: filename, filesize, duration, date
 - Undo any decision at any time before you commit the batch delete
+- **Bookmarks** — press `B` while playing to drop a timestamped bookmark; bookmarks persist across sessions and appear as clickable chips below the player
+- **Playback speed** — `[` / `]` to step through 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×; speed persists as you move between videos
 
 ### Thumbnail Generation
 
@@ -88,6 +94,7 @@ Progress is saved in a `.video-cull-cache.json` file inside the scanned folder. 
 | `Ctrl + E` | Reveal file in Explorer |
 | `Ctrl + +` / `Ctrl + -` | Zoom cards in/out |
 | `F11` | Toggle fullscreen |
+| `?` | Open keyboard shortcuts reference |
 
 ### Review Mode
 
@@ -101,6 +108,8 @@ Progress is saved in a `.video-cull-cache.json` file inside the scanned folder. 
 | `← / →` | Previous / next video (or scrub 5s when playing) |
 | `Enter` | Play in-app |
 | `Ctrl + Enter` | Open in external player |
+| `B` | Drop bookmark at current position |
+| `[` / `]` | Decrease / increase playback speed |
 | `Esc` | Stop playback / exit review |
 
 All review shortcuts are fully customizable in Settings.
@@ -141,6 +150,16 @@ cd videocurl
 npm install
 npm run dev
 ```
+
+### Available Scripts
+
+<!-- AUTO-GENERATED from package.json scripts -->
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite + Electron in development mode with hot reload |
+| `npm run build` | Vite-only production build (renderer only, no packaging) |
+| `npm run package` | Full production build + Windows installer (NSIS) |
+<!-- END AUTO-GENERATED -->
 
 To build the Windows installer yourself:
 

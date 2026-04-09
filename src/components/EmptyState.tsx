@@ -28,9 +28,9 @@ export default function EmptyState() {
         Select a folder to start reviewing your video collection.<br />
         Quickly sort, keep, or delete videos using thumbnails.
       </p>
-      <button className="btn btn-primary empty-btn" onClick={handleSelect}>
-        <FolderOpen size={18} />
-        Select Folder
+      <button className="empty-btn" onClick={handleSelect}>
+        <FolderOpen size={20} strokeWidth={2.5} />
+        Open Directory
       </button>
 
       <label className="empty-subfolders">

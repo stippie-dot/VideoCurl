@@ -2,6 +2,21 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.3.0] - 2026-04-09
+
+### Changed
+- **UI refinements** — updated accent and status colors (more vibrant keep/delete), subtler borders using alpha values, improved shadows and surface tones throughout
+- **Deleted cards** — grayscale + opacity treatment makes marked-for-deletion videos visually recede in the grid; restores on hover
+- **Filter pills** — active pills now use accent gradient with glow; keep/delete pills use solid status colors
+- **Badge animation** — status badges (keep/delete) animate in with a pop on first appearance
+- **Review mode** — counter and close button styled as matching pill/circle pair; keep/delete flash uses radial gradient
+
+### Improved
+- **Empty state** — redesigned welcome screen with glowing icon container, gradient title text, and pill-shaped open button
+
+### Removed
+- Internal preview modal component (was unreachable dead code; grid play button opens review mode directly)
+
 ## [1.2.0] - 2026-04-09
 
 ### Added

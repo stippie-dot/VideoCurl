@@ -2,54 +2,68 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: var(--bg-app);
+  background: var(--bg-app); /* Solid opaque canvas to prevent bleed-through */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: background 300ms ease;
+  transition: background var(--transition);
 }
 
-/* Status flash */
+/* Status flash - solid gradients for focus */
 .review-keep {
-  background: linear-gradient(180deg, rgba(0,214,143,0.06) 0%, var(--bg-app) 40%);
+  background: radial-gradient(circle at 50% 0%, rgba(0, 250, 154, 0.08) 0%, var(--bg-app) 60%);
 }
 .review-delete {
-  background: linear-gradient(180deg, rgba(255,92,108,0.06) 0%, var(--bg-app) 40%);
+  background: radial-gradient(circle at 50% 0%, rgba(255, 71, 87, 0.08) 0%, var(--bg-app) 60%);
 }
 
 /* ── Close ── */
 .review-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 36px;
-  height: 36px;
+  top: 46px;
+  right: 24px;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--bg-surface);
+  border: 1px solid var(--border); /* Glass border */
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
   color: var(--text-secondary);
   transition: var(--transition);
   z-index: 10;
+  box-shadow: var(--shadow-sm), var(--glass-glow);
 }
 .review-close:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+  transform: translateY(-50%) scale(1.05);
+  border-color: var(--border-hover);
 }
 
 /* ── Counter ── */
 .review-counter {
   position: absolute;
-  top: 20px;
+  top: 46px;
   left: 50%;
-  transform: translateX(-50%);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-tertiary);
+  transform: translateX(-50%) translateY(-50%);
+  font-size: 14px;
+  font-weight: 500; /* Lighter weight for premium feel */
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 20px;
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
   letter-spacing: 0.05em;
   z-index: 10;
+  box-shadow: var(--shadow-sm), var(--glass-glow);
 }
 
 /* ── Content ── */
@@ -81,17 +95,22 @@
   position: relative;
   width: 100%;
   max-width: 760px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg); /* Slightly more rounded */
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
-  background: #0a0a12;
-  transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
-  --media-border-radius: 12px;
+  box-shadow: var(--shadow-lg), var(--glass-glow);
+  border: 1px solid var(--border); /* Glass border */
+  background: rgba(5, 5, 8, 0.5); /* Deep translucent */
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  transition: max-width var(--spring), box-shadow var(--spring), transform var(--spring);
+  --media-border-radius: var(--radius-lg);
+  transform: translateZ(0); /* Hardware accel */
 }
 
 .review-thumbs.playing {
   max-width: 100%;
-  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+  box-shadow: 0 40px 80px -12px rgba(0, 0, 0, 0.9), var(--glass-glow);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 

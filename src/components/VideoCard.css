@@ -4,29 +4,36 @@
   height: 100%;
   background: var(--bg-surface);
   border: 1.5px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md); /* Reduced radius for pro-tool feel */
   overflow: hidden;
   cursor: pointer;
-  transition: border-color var(--transition), box-shadow var(--transition), transform 150ms ease;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--spring);
+  box-shadow: var(--shadow-sm);
+  transform: translateZ(0); /* Hardware accel */
 }
 .video-card:hover {
-  border-color: var(--border-hover);
+  border-color: var(--border-active);
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-2px); /* Tighter hover motion */
 }
 
 /* Status Borders */
 .card-keep {
   border-color: var(--color-keep) !important;
-  box-shadow: 0 0 0 1px var(--color-keep-dim), var(--shadow-sm);
+  box-shadow: 0 0 0 1px rgba(0, 250, 154, 0.2), var(--shadow-sm);
+  background: linear-gradient(180deg, rgba(0, 250, 154, 0.05), var(--bg-surface));
 }
 .card-delete {
   border-color: var(--color-delete) !important;
-  box-shadow: 0 0 0 1px var(--color-delete-dim), var(--shadow-sm);
+  box-shadow: 0 0 0 1px rgba(255, 71, 87, 0.2), var(--shadow-sm);
+  background: linear-gradient(180deg, rgba(255, 71, 87, 0.05), var(--bg-surface));
   opacity: 0.7;
+  filter: grayscale(60%);
+  transition: opacity var(--transition), filter var(--transition), transform var(--spring);
 }
 .card-delete:hover {
   opacity: 1;
+  filter: grayscale(0%);
 }
 
 /* ── Thumbnail Area ── */
@@ -49,7 +56,14 @@
   height: 22px;
   border-radius: 50%;
   z-index: 2;
+  animation: badge-pop var(--spring);
 }
+@keyframes badge-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .badge-keep {
   background: var(--color-keep);
   color: #fff;
@@ -66,7 +80,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.4); /* Removed blur so thumbnail remains visible */
   opacity: 0;
   transition: opacity var(--transition);
   z-index: 3;
@@ -76,20 +90,21 @@
 }
 
 .card-play-btn {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.15); /* Clean semi-transparent circle instead of full glass/border */
   color: white;
-  backdrop-filter: blur(4px);
-  transition: var(--transition);
+  transition: all var(--spring);
 }
 .card-play-btn:hover {
-  background: var(--accent);
+  background: var(--accent-gradient);
+  color: #fff;
   transform: scale(1.1);
+  box-shadow: var(--accent-glow);
 }
 
 /* ── Info ── */
@@ -139,18 +154,28 @@
   font-size: 11px;
   font-weight: 500;
   background: var(--bg-surface-hover);
+  border: 1px solid transparent;
   color: var(--text-secondary);
-  transition: var(--transition);
+  transition: all var(--transition);
 }
 .card-btn:hover {
   background: var(--bg-surface-active);
   color: var(--text-primary);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+.card-btn-keep {
+  /* Keep default styling */
 }
 .card-btn-keep.active {
   background: var(--color-keep-dim);
   color: var(--color-keep);
+  border-color: rgba(0, 250, 154, 0.3);
+  box-shadow: inset 0 0 10px rgba(0, 250, 154, 0.1);
 }
 .card-btn-delete.active {
   background: var(--color-delete-dim);
   color: var(--color-delete);
+  border-color: rgba(255, 71, 87, 0.3);
+  box-shadow: inset 0 0 10px rgba(255, 71, 87, 0.1);
 }

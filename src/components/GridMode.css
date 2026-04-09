@@ -1,7 +1,7 @@
 .grid-mode {
   flex: 1;
   overflow: hidden;
-  background: var(--bg-app);
+  background: transparent; /* Allows main app gradient to show through */
 }
 
 .grid-empty {

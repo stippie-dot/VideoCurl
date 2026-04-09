@@ -8,6 +8,7 @@
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+  z-index: 10;
 }
 
 /* ── Header ── */
@@ -124,36 +125,45 @@
 .filter-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
+  gap: 6px;
+  padding: 6px 14px;
   border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
-  background: var(--bg-surface);
+  background: rgba(255, 255, 255, 0.05); /* Frost pill */
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
-  transition: var(--transition);
+  transition: all var(--spring);
   cursor: pointer;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
 }
 .pill:hover {
-  background: var(--bg-surface-hover);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
 }
 .pill-active {
-  background: var(--accent-dim);
-  color: var(--accent);
+  background: var(--accent-gradient);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: var(--accent-glow), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  font-weight: 600;
 }
 .pill-active.pill-keep {
-  background: var(--color-keep-dim);
-  color: var(--color-keep);
+  background: var(--color-keep);
+  box-shadow: var(--color-keep-glow);
+  color: #000;
 }
 .pill-active.pill-delete {
-  background: var(--color-delete-dim);
-  color: var(--color-delete);
+  background: var(--color-delete);
+  box-shadow: var(--color-delete-glow);
+  color: #fff;
 }
 
 /* ── Select ── */

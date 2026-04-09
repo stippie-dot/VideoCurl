@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(where gh:*)",
+      "Bash(winget list:*)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh auth:*)",
+      "Bash(git remote:*)",
+      "Bash(mkdir -p docs/screenshots)",
+      "Bash(cp \".docs/screenshots/Screenshot 2026-04-06 144726.png\" docs/screenshots/01-welcome.png)",
+      "Bash(cp \".docs/screenshots/Screenshot 2026-04-06 144249.png\" docs/screenshots/02-grid-view.png)",
+      "Bash(cp \".docs/screenshots/Screenshot 2026-04-06 144653.png\" docs/screenshots/03-grid-view-large.png)",
+      "Bash(cp \".docs/screenshots/Screenshot 2026-04-06 144602.png\" docs/screenshots/04-review-thumbnails.png)",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(''electron:'', p.devDependencies.electron || p.dependencies.electron\\)\")",
+      "Bash(node -e \"const p = require\\(''./node_modules/electron/package.json''\\); console.log\\(''installed:'', p.version\\)\")",
+      "Read(//d//**)",
+      "Read(//c/Users/Matthijs/**)",
+      "Bash(ls -la /home/)",
+      "Bash(wc -l /d/GitHub/Video-Cull/testspace/script.js /d/GitHub/Video-Cull/testspace/src/renderer/main/*.js /d/GitHub/Video-Cull/testspace/src/main/*.js)",
+      "Bash(find /d/GitHub/Video-Cull/testspace -name *rating* -o -name *bookmark* -o -name *favorite* -o -name *tag* -o -name *compile*)",
+      "Read(//d/GitHub/Video-Cull/**)",
+      "Bash(grep -i \"stash\\\\|tag\\\\|rating\\\\|favorite\\\\|compilation\\\\|bookmark\" /d/GitHub/Video-Cull/testspace/src/renderer/storage/*.js)",
+      "Bash(\"d:/GitHub/Video-Cull/src/components/ShortcutsHelp.css\")",
+      "Bash(npx tsc:*)",
+      "Bash(gh release:*)",
+      "Bash(grep -A 30 '\"\"build\"\"' package.json)"
+    ]
+  }
+}

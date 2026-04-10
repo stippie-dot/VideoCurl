@@ -177,6 +177,11 @@ const useStore = create<VideoStore>((set, get) => ({
       videos,
       filteredVideos: computeFiltered(state),
     });
+
+    const dir = get().directory;
+    if (dir && window.electronAPI) {
+      window.electronAPI.saveCache(dir, videos);
+    }
   },
 
   setOSThumbnail: (videoId: string, osThumbnail: string) => {

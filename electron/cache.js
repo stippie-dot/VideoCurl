@@ -124,17 +124,23 @@ function loadCacheMap(db) {
   );
 
   const map = new Map();
+  let withThumbs = 0;
+  let nonPending = 0;
   for (const row of rows) {
+    const thumbs = thumbStmt.all(row.id).map((t) => t.file_path);
+    if (thumbs.length > 0) withThumbs++;
+    if (row.status && row.status !== 'pending') nonPending++;
     map.set(row.id, {
       id: row.id,
       status: row.status || 'pending',
       durationSecs: row.duration_secs ?? null,
       metadataDate: row.metadata_date ?? null,
-      thumbnails: thumbStmt.all(row.id).map((t) => t.file_path),
+      thumbnails: thumbs,
       bookmarks: row.bookmarks ? JSON.parse(row.bookmarks) : [],
       duplicateHash: row.duplicate_hash ?? null,
     });
   }
+  log.info(`[cache] loadCacheMap: ${rows.length} videos, ${withThumbs} with thumbs, ${nonPending} non-pending`);
   return map;
 }
 
@@ -146,10 +152,21 @@ function loadCacheMap(db) {
  */
 function saveCache(db, videos) {
   const upsertVideo = db.prepare(`
-    INSERT OR REPLACE INTO videos
+    INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
        duration_secs, status, bookmarks, duplicate_hash, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      filename    = excluded.filename,
+      path        = excluded.path,
+      size_bytes  = excluded.size_bytes,
+      file_date   = excluded.file_date,
+      metadata_date = COALESCE(excluded.metadata_date, metadata_date),
+      duration_secs = COALESCE(excluded.duration_secs, duration_secs),
+      status      = excluded.status,
+      bookmarks   = excluded.bookmarks,
+      duplicate_hash = excluded.duplicate_hash,
+      updated_at  = excluded.updated_at
   `);
   const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
   const insertThumb = db.prepare(
@@ -186,10 +203,21 @@ function saveCache(db, videos) {
  */
 async function saveCacheChunked(db, videos, onProgress) {
   const upsertVideo = db.prepare(`
-    INSERT OR REPLACE INTO videos
+    INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
        duration_secs, status, bookmarks, duplicate_hash, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      filename    = excluded.filename,
+      path        = excluded.path,
+      size_bytes  = excluded.size_bytes,
+      file_date   = excluded.file_date,
+      metadata_date = COALESCE(excluded.metadata_date, metadata_date),
+      duration_secs = COALESCE(excluded.duration_secs, duration_secs),
+      status      = excluded.status,
+      bookmarks   = excluded.bookmarks,
+      duplicate_hash = excluded.duplicate_hash,
+      updated_at  = excluded.updated_at
   `);
   const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
   const insertThumb = db.prepare(
@@ -300,6 +328,9 @@ async function migrateJsonIfNeeded(folderPath, db) {
  * Closes the connection first if it's the active DB.
  */
 function deleteDb(folderPath, cacheRootDir) {
+  log.warn(`[cache] deleteDb called for: ${folderPath}`);
+  log.warn(`[cache] deleteDb stack:\n${new Error().stack}`);
+
   if (_dbFolderPath === folderPath && _db) {
     try { _db.close(); } catch { /* ignore */ }
     _db = null;

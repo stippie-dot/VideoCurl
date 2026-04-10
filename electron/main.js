@@ -76,7 +76,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
-  cacheRootDir = path.join(app.getPath('userData'), 'cache');
+  cacheRootDir = path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
     // thumb:///D:/path/to/.video-cull-thumbs/id/thumb.jpg
@@ -299,8 +299,15 @@ app.on('before-quit', () => {
 
 // ── Cache constants ──────────────────────────────────────────────────────
 // Legacy directory name — only used to locate old thumbnails during migration.
-// New thumbnails are written to cacheRootDir/thumbs/ from P0 onwards.
+// New thumbnails are written to cacheRootDir/thumbs/<folderKey>/ from P0 onwards,
+// where folderKey matches the DB filename (same sanitization).
 const THUMB_DIR = '.video-cull-thumbs';
+
+/** Returns the per-folder thumbnail root inside the cache dir. */
+function folderThumbRoot(dirPath) {
+  const folderKey = path.basename(cache.resolveCachePath(dirPath, cacheRootDir), '.db');
+  return path.join(cacheRootDir, 'thumbs', folderKey);
+}
 
 // ── Thumbnail path helpers ───────────────────────────────────────────────
 // The DB always stores paths relative to cacheRootDir (e.g. 'thumbs/id/thumb_01.jpg').
@@ -334,6 +341,7 @@ ipcMain.handle('select-directory', async () => {
 
 // 2. Scan directory for video files
 ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
+  log.info(`[scan-directory] called for: ${dirPath}`);
   // Security: Validate dirPath
   try {
     const stats = await fs.stat(dirPath);
@@ -354,72 +362,41 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   const cachedMap = cache.loadCacheMap(db);
 
   // Ensure the new thumbnail cache directory exists
-  const newThumbRoot = path.join(cacheRootDir, 'thumbs');
+  const newThumbRoot = folderThumbRoot(dirPath);
   await fs.mkdir(newThumbRoot, { recursive: true });
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
-  // Runs once per folder after upgrade; subsequent scans are no-ops.
+  // Filesystem-based: checks disk directly, not the DB, so it works even when
+  // the DB has no thumbnail records (e.g. first launch after JSON→SQLite migration).
+  // Runs once per folder; subsequent scans find nothing to move and are instant.
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
-  const migrations = [];
-  for (const [id, cached] of cachedMap) {
-    if (!cached.thumbnails?.length) continue;
-    if (!path.isAbsolute(cached.thumbnails[0])) continue; // already relative — skip
-    const oldVideoThumbDir = path.dirname(cached.thumbnails[0]);
-    migrations.push({ id, cached, oldVideoThumbDir });
-  }
-
-  // To keep UI loading fast, process folder migrations in concurrent batches
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < migrations.length; i += BATCH_SIZE) {
-    const batch = migrations.slice(i, i + BATCH_SIZE);
-    await Promise.all(batch.map(async ({ id, cached, oldVideoThumbDir }) => {
-      const newVideoThumbDir = path.join(newThumbRoot, id);
-      let success = false;
-      try {
-        await fs.rename(oldVideoThumbDir, newVideoThumbDir);
-        success = true;
-      } catch (err) {
-        // EXDEV means cross-device (moving from D: to C:). Fallback to full copy.
-        // ENOENT means source doesn't exist anymore. EEXIST means target already exists.
-        if (err.code === 'EXDEV' || err.code === 'EEXIST' || err.code === 'ENOTEMPTY') {
-          try {
-            await fs.cp(oldVideoThumbDir, newVideoThumbDir, { recursive: true, force: true });
-            await fs.rm(oldVideoThumbDir, { recursive: true, force: true }).catch(() => {});
-            success = true;
-          } catch (e) {
-            // copy failed
+  const oldVideoIds = await fs.readdir(oldThumbBase).catch(() => []);
+  if (oldVideoIds.length > 0) {
+    log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} → ${newThumbRoot}`);
+    const BATCH = 10;
+    for (let i = 0; i < oldVideoIds.length; i += BATCH) {
+      await Promise.all(oldVideoIds.slice(i, i + BATCH).map(async (videoId) => {
+        const oldDir = path.join(oldThumbBase, videoId);
+        const newDir = path.join(newThumbRoot, videoId);
+        try {
+          await fs.rename(oldDir, newDir);
+        } catch (err) {
+          if (err.code === 'EXDEV') {
+            // Cross-device move: copy then delete
+            try {
+              await fs.cp(oldDir, newDir, { recursive: true, force: true });
+              await fs.rm(oldDir, { recursive: true, force: true });
+            } catch { /* leave in place if copy fails */ }
           }
-        } else if (err.code === 'ENOENT') {
-          // Interrupted migration: source is gone, but the database wasn't updated yet. 
-          // Check if the files made it to the new destination.
-          try {
-            const stat = await require('fs/promises').stat(newVideoThumbDir);
-            if (stat.isDirectory()) success = true; 
-          } catch (e) {
-            // Both source and destination missing. Thumbnails are dead.
-          }
+          // ENOENT = already gone, ignore
         }
-      }
-      if (success) {
-        const newThumbs = [];
-        for (const oldPath of cached.thumbnails) {
-          newThumbs.push(path.join(newVideoThumbDir, path.basename(oldPath)));
-        }
-        cached.thumbnails = newThumbs; // update in-memory map with new absolute paths
-      }
-    }));
-  }
-  // Remove old .video-cull-thumbs if it's now empty
-  try {
-    const subdirs = await fs.readdir(oldThumbBase).catch(() => []);
-    for (const sub of subdirs) {
-      const subPath = path.join(oldThumbBase, sub);
-      const files = await fs.readdir(subPath).catch(() => ['non-empty']);
-      if (files.length === 0) await fs.rmdir(subPath).catch(() => {});
+      }));
     }
-    const remaining = await fs.readdir(oldThumbBase).catch(() => ['non-empty']);
+    // Remove old base dir if now empty
+    const remaining = await fs.readdir(oldThumbBase).catch(() => ['x']);
     if (remaining.length === 0) await fs.rmdir(oldThumbBase).catch(() => {});
-  } catch { /* ignore */ }
+    log.info('[scan-directory] Thumbnail migration complete');
+  }
 
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
     mainWindow.webContents.send('scan-progress', progress);
@@ -480,7 +457,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   });
 
   // Thumbnails are written to the cache directory, not the video folder
-  const thumbDir = path.join(cacheRootDir, 'thumbs');
+  const thumbDir = folderThumbRoot(dirPath);
   await fs.mkdir(thumbDir, { recursive: true });
 
   let config = {};
@@ -542,6 +519,8 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
 });
 
 ipcMain.handle('clear-cache', async (event, dirPath) => {
+  log.warn(`[clear-cache] called for: ${dirPath}`);
+  log.warn(`[clear-cache] stack:\n${new Error().stack}`);
   if (!dirPath || typeof dirPath !== 'string') return false;
 
   // Security: only allow clearing the cache of the currently scanned directory
@@ -553,19 +532,11 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   cancelProcessing();
 
   // Collect video IDs before deleting the DB so we know which thumb dirs to remove
-  const db = cache.openDb(dirPath, cacheRootDir);
-  const videoIds = db.prepare('SELECT id FROM videos').all().map((r) => r.id);
-
   cache.deleteDb(dirPath, cacheRootDir);
 
   try {
-    const thumbCacheDir = path.join(cacheRootDir, 'thumbs');
-
-    // Delete each video's thumbnail subdirectory from the cache
-    const deletions = videoIds.map((id) =>
-      fs.rm(path.join(thumbCacheDir, id), { recursive: true, force: true }).catch(() => {})
-    );
-    await Promise.all(deletions);
+    // Delete the entire per-folder thumb directory in one shot
+    await fs.rm(folderThumbRoot(dirPath), { recursive: true, force: true }).catch(() => {});
 
     // Also clean up any legacy .video-cull-thumbs in the video folder
     const legacyThumbDir = path.join(dirPath, THUMB_DIR);

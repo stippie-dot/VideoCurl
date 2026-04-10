@@ -13,14 +13,32 @@ All notable changes to Video Cull will be documented here.
 
 ## [1.4.0] - 2026-04-10
 
+### Added
+- **SQLite cache layer** — migrated from JSON to `better-sqlite3` with per-folder database files and a dedicated cache module.
+- **Chunked bulk persistence** — added chunked SQLite writes with event-loop yielding to keep IPC/UI responsive during large saves.
+- **Automatic JSON migration** — legacy `.video-cull-cache.json` is imported on first scan, preserving status and bookmarks.
+
 ### Changed
-- **Cache Architecture** — migrated legacy JSON caching system to robust local SQLite implementation (`better-sqlite3`), dramatically improving read/write reliability and speed for massive folders.
-- **Data Durability** — database operations are now fully atomic and correctly handle concurrent thread execution to prevent UI freezes.
-- **Accurate Durations** — previously missing duration stats have been fixed as a side effect of the migration, pulling directly from FFprobe.
+- **Cache architecture** — all cache IO now goes through a single DB path resolver and centralized DB lifecycle.
+- **Thumbnail storage location** — thumbnails now live under the app cache root (`userData/video-cache`) instead of colliding with Electron internals.
+- **Thumbnail path handling** — DB stores relative thumbnail paths, renderer receives absolute paths via boundary conversion.
+- **Scan merge behavior** — cache merge now preserves cached duration, metadata date, bookmarks, status, and thumbnail references.
+
+### Fixed
+- **Cache wipe on restart** — resolved DB/thumb data loss caused by writing into Electron's internal cache area.
+- **Cascade thumbnail loss on upsert** — replaced destructive replace behavior with safe `ON CONFLICT DO UPDATE` upserts.
+- **Missed thumbnail migration path** — migration now checks filesystem state directly and supports cross-device move fallback.
+- **Write amplification during thumbnail generation** — store now saves only changed videos (not whole arrays) for thumbnail/status/bookmark/undo updates.
+- **Transient save failures** — added a retry queue for partial saves with race-safe token reconciliation.
+- **Duration persistence on rescan** — cached duration now survives rescans when thumbnails already exist.
+- **Delete flow overhead** — removed redundant full-cache save after batch delete.
+- **Cache load performance** — removed N+1 thumbnail query pattern by bulk-loading and grouping thumbnail rows in memory.
+
+### Docs
+- **README maintenance** — marked screenshots section as outdated for the v1.3.0 baseline prior to migration work.
 
 ### Migration
-- **Auto-migration** — existing `.video-cull-cache.json` files are automatically ingested and transitioned to `.db` on launch.
-- **Status Preservation** — review status and bookmarks are maintained precisely; thumbnail data is transparently relocated without loss.
+- **Automatic transition** — old JSON cache files are imported and removed; durations/thumbnails are regenerated or merged from current cache/scan state as applicable.
 
 ## [1.3.0] - 2026-04-09
 

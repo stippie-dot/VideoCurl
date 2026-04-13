@@ -168,6 +168,17 @@ npm run package
 [Electron](https://www.electronjs.org/) · [React](https://react.dev/) · [Video.js](https://videojs.com/) · [FFmpeg](https://ffmpeg.org/) · [Zustand](https://github.com/pmndrs/zustand) · [TypeScript](https://www.typescriptlang.org/) · [Vite](https://vitejs.dev/)
 
 ---
+## Star History
+
+<a href="https://www.star-history.com/?repos=stippie-dot%2FVideoCull&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&legend=top-left" />
+ </picture>
+</a>
+
+---
 
 ## License
 

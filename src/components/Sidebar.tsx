@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import type { StatusFilter } from '../types';
 import useStore from '../store';
-import { formatSize } from '../utils';
+import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, Maximize2, Settings
+  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, Maximize2, Settings, ChevronDown
 } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
   onRescan: () => void;
+  onDirectoryPicked: (path: string) => void;
+  onNotify: (message: string, kind?: 'info' | 'error') => void;
 }
 
-export default function Sidebar({ onRescan }: SidebarProps) {
+export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: SidebarProps) {
   const directory = useStore((s) => s.directory);
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
@@ -42,14 +44,36 @@ export default function Sidebar({ onRescan }: SidebarProps) {
   const setFolderSortBy = useStore((s) => s.setFolderSortBy);
   const folderSortOrder = useStore((s) => s.folderSortOrder);
   const setFolderSortOrder = useStore((s) => s.setFolderSortOrder);
+  const recentDirectories = useStore((s) => s.settings.recentDirectories);
+  const recentDirectoryTimestamps = useStore((s) => s.settings.recentDirectoryTimestamps);
+  const clearRecentDirectories = useStore((s) => s.clearRecentDirectories);
+  const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
 
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showRecents, setShowRecents] = useState(false);
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
     const dir = await window.electronAPI.selectDirectory();
-    if (dir) setDirectory(dir);
+    if (dir) onDirectoryPicked(dir);
   };
+
+  const handleOpenRecent = async (dir: string) => {
+    if (!window.electronAPI) {
+      setDirectory(dir);
+      setShowRecents(false);
+      return;
+    }
+    const result = await window.electronAPI.validateDroppedPath(dir);
+    if (!result.valid || !result.isDirectory) {
+      removeRecentDirectory(dir);
+      onNotify('This recent folder is no longer available.', 'error');
+      return;
+    }
+    onDirectoryPicked(dir);
+    setShowRecents(false);
+  };
+
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
@@ -112,7 +136,47 @@ export default function Sidebar({ onRescan }: SidebarProps) {
           <span className="directory-path" title={directory || undefined}>
             {directory}
           </span>
+          {recentDirectories.length > 1 && (
+            <button
+              className="btn-recents-toggle"
+              title="Recent folders"
+              aria-expanded={showRecents}
+              aria-controls="sidebar-recents-list"
+              onClick={() => setShowRecents((v) => !v)}
+            >
+              <ChevronDown size={14} style={{ transform: showRecents ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+          )}
         </div>
+        {showRecents && recentDirectories.length > 1 && (
+          <>
+          <ul className="recents-list" id="sidebar-recents-list">
+            {recentDirectories.slice(0, 5).map((d) => (
+              <li key={d}>
+                <button
+                  className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
+                  title={`${d} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}
+                  disabled={d === directory}
+                  onClick={() => void handleOpenRecent(d)}
+                >
+                  <FolderOpen size={12} />
+                  {formatRecentPath(d)}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            className="btn btn-ghost recents-clear-btn"
+            onClick={() => {
+              clearRecentDirectories();
+              setShowRecents(false);
+              onNotify('Cleared recent folders.', 'info');
+            }}
+          >
+            Clear all
+          </button>
+          </>
+        )}
 
         <label className="checkbox-label">
           <input

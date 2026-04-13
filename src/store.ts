@@ -4,7 +4,7 @@ import type {
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField,
 } from './types';
-import { DEFAULT_KEYBINDS, migrateSettings } from './keybind-defaults';
+import { DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
 
 function getFolder(v: Video): string {
   const sep = v.path.includes('/') ? '/' : '\\';
@@ -331,6 +331,8 @@ const useStore = create<VideoStore>((set, get) => ({
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,
     hardwareAccel: true,
+    recentDirectories: [],
+    recentDirectoryTimestamps: {},
     ...DEFAULT_KEYBINDS,
   },
 
@@ -338,7 +340,31 @@ const useStore = create<VideoStore>((set, get) => ({
   stats: { total: 0, pending: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
 
   // ── Actions ──
-  setDirectory: (dir: string | null) => set({ directory: dir }),
+  setDirectory: (dir: string | null) => {
+    if (dir !== null) {
+      const { settings } = get();
+      const existing = settings.recentDirectories.filter((d) => d !== dir);
+      const updated = [dir, ...existing].slice(0, 8);
+      const nextTimestamps = { ...settings.recentDirectoryTimestamps, [dir]: Date.now() };
+      const prunedTimestamps: Record<string, number> = {};
+      for (const p of updated) {
+        if (nextTimestamps[p]) prunedTimestamps[p] = nextTimestamps[p];
+      }
+      const newSettings = {
+        ...settings,
+        recentDirectories: updated,
+        recentDirectoryTimestamps: prunedTimestamps,
+      };
+      set({ directory: dir, settings: newSettings });
+      if (window.electronAPI) {
+        void window.electronAPI.saveConfig(newSettings).catch((err) => {
+          console.warn('[store] Failed to save directory settings:', err);
+        });
+      }
+    } else {
+      set({ directory: dir });
+    }
+  },
 
   setIncludeSubfolders: (val: boolean) => set({ includeSubfolders: val }),
 
@@ -551,6 +577,35 @@ const useStore = create<VideoStore>((set, get) => ({
     persistChangedVideos(dir, [updatedVideo]);
   },
 
+  clearRecentDirectories: () => {
+    const { settings } = get();
+    const nextSettings = {
+      ...settings,
+      recentDirectories: [],
+      recentDirectoryTimestamps: {},
+    };
+    set({ settings: nextSettings });
+    if (window.electronAPI) {
+      void window.electronAPI.saveConfig(nextSettings);
+    }
+  },
+
+  removeRecentDirectory: (dir: string) => {
+    const { settings } = get();
+    const nextRecentDirectories = settings.recentDirectories.filter((p) => p !== dir);
+    const nextTimestamps = { ...settings.recentDirectoryTimestamps };
+    delete nextTimestamps[dir];
+    const nextSettings = {
+      ...settings,
+      recentDirectories: nextRecentDirectories,
+      recentDirectoryTimestamps: nextTimestamps,
+    };
+    set({ settings: nextSettings });
+    if (window.electronAPI) {
+      void window.electronAPI.saveConfig(nextSettings);
+    }
+  },
+
   // ── Settings ──
   setIsSettingsModalOpen: (val: boolean) => set({ isSettingsModalOpen: val }),
   updateSettings: (newSettings) => {
@@ -579,7 +634,30 @@ const useStore = create<VideoStore>((set, get) => ({
     if (window.electronAPI) {
       const raw = await window.electronAPI.getConfig();
       if (raw) {
-        const migrated = migrateSettings(raw as unknown as Record<string, unknown>);
+        let migrated = migrateSettings(raw as unknown as Record<string, unknown>);
+
+        // Prune stale recent directories on app startup
+        if (migrated.recentDirectories && migrated.recentDirectories.length > 0) {
+          try {
+            const pruned = await pruneRecentDirectories(
+              migrated.recentDirectories,
+              (path: string) => window.electronAPI!.validateDroppedPath(path)
+            );
+            const rawTimestamps = (migrated.recentDirectoryTimestamps ?? {}) as Record<string, number>;
+            const prunedTimestamps: Record<string, number> = {};
+            for (const p of pruned) {
+              if (rawTimestamps[p]) prunedTimestamps[p] = rawTimestamps[p];
+            }
+            migrated = {
+              ...migrated,
+              recentDirectories: pruned,
+              recentDirectoryTimestamps: prunedTimestamps,
+            };
+          } catch (err) {
+            console.warn('[store] Failed to prune recent directories:', err);
+          }
+        }
+
         const fullSettings = { ...get().settings, ...migrated };
         set({
           settings: fullSettings,
@@ -588,6 +666,13 @@ const useStore = create<VideoStore>((set, get) => ({
           sortOrder: fullSettings.defaultSortOrder,
           groupByFolder: fullSettings.defaultGroupByFolder,
         });
+
+        // Save pruned settings back to disk
+        try {
+          await window.electronAPI.saveConfig(fullSettings);
+        } catch (err) {
+          console.warn('[store] Failed to save pruned settings:', err);
+        }
       }
     }
   },

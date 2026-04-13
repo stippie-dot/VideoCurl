@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  validateDroppedPath: (droppedPath) => ipcRenderer.invoke('validate-dropped-path', droppedPath),
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 
   // Scanning

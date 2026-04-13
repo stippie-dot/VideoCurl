@@ -390,16 +390,16 @@ input[type="range"] {
 
 .btn-install-update {
   padding: 7px 16px;
-  background: #4f46e5;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   color: #fff;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: filter 0.15s;
 }
 
 .btn-install-update:hover {
-  background: #4338ca;
+  filter: brightness(1.15);
 }

@@ -62,7 +62,8 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Video.Cull.Setup.${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

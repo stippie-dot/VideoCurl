@@ -206,7 +206,7 @@
   justify-content: center;
   gap: 16px;
   padding: 10px 20px;
-  background: #4f46e5;
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   font-weight: 500;

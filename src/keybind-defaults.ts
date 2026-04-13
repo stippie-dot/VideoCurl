@@ -59,6 +59,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.recentDirectoryTimestamps = {};
   }
 
+  if (result.autoUpdates === undefined || result.autoUpdates === null) {
+    result.autoUpdates = true;
+  }
+
   return result as Partial<AppSettings>;
 }
 

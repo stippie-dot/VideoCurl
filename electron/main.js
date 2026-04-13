@@ -729,6 +729,16 @@ function setupAutoUpdater() {
     mainWindow?.webContents.send('update-status', { status: 'error', message: err.message });
   });
 
-  // Check shortly after launch so the window is settled
-  setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+  // Check shortly after launch (if auto-updates are enabled in settings)
+  setTimeout(async () => {
+    try {
+      const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
+      const data = await require('fs').promises.readFile(configPath, 'utf8');
+      const config = JSON.parse(data);
+      if (config.autoUpdates === false) return;
+    } catch {
+      // No config yet — default is enabled
+    }
+    autoUpdater.checkForUpdates();
+  }, 5000);
 }

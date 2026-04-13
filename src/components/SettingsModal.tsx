@@ -236,9 +236,17 @@ export default function SettingsModal() {
                     )}
                   </div>
 
-                  <span className="help-text">
-                    Updates are downloaded automatically in the background. You will be notified when one is ready to install.
-                  </span>
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={localSettings.autoUpdates}
+                        onChange={(e) => handleChange('autoUpdates', e.target.checked)}
+                      />
+                      Automatically check for updates on startup
+                    </label>
+                    <span className="help-text indent">When enabled, updates download silently in the background. You are always notified before anything installs.</span>
+                  </div>
                 </div>
               );
             })()}

@@ -79,6 +79,7 @@ export interface AppSettings {
   hardwareAccel: boolean;
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
+  autoUpdates: boolean;
   // Review mode — context-independent
   keyKeep: Keybind;
   keyDelete: Keybind;

@@ -49,4 +49,5 @@ jobs:
           generate_release_notes: false
           files: |
             release/*.exe
+            release/*.blockmap
             release/latest.yml

@@ -6,9 +6,11 @@ All notable changes to Video Cull will be documented here.
 
 ### Added
 - In-app auto-updater powered by `electron-updater`: checks for new versions on startup, downloads in the background, and notifies with a persistent banner when ready to install.
-- Updates tab in Preferences showing current version, update status, download progress, and a "Restart to Install" button.
+- Updates tab in Preferences showing current version, update status, download progress, download progress bar, and a "Restart to Install" button.
 - "Check for updates" button in the Updates tab for manual checks.
-- GitHub Actions release workflow now uploads `latest.yml` alongside the installer so the updater can locate new releases.
+- Toggle to disable automatic update checks on startup (manual checks always available).
+- GitHub Actions release workflow now uploads `latest.yml` and `.blockmap` alongside the installer for differential updates.
+- Locked installer filename to `Video.Cull.Setup.{version}.exe` for consistent naming across build environments.
 
 ## [1.5.1] - 2026-04-13
 

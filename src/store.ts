@@ -333,6 +333,7 @@ const useStore = create<VideoStore>((set, get) => ({
     hardwareAccel: true,
     recentDirectories: [],
     recentDirectoryTimestamps: {},
+    autoUpdates: true,
     ...DEFAULT_KEYBINDS,
   },
 

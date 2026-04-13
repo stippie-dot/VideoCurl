@@ -80,5 +80,6 @@
       "owner": "stippie-dot",
       "repo": "VideoCull"
     }
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

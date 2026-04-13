@@ -185,6 +185,16 @@ export interface VideoStore {
   loadSettings: () => Promise<void>;
 }
 
+// ── Auto-update ────────────────────────────────────────────────────
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error';
+
+export interface UpdateInfo {
+  status: UpdateStatus;
+  version?: string;
+  percent?: number;
+  message?: string;
+}
+
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
@@ -204,6 +214,10 @@ export interface ElectronAPI {
   openVideo: (filePath: string) => Promise<void>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
+  getAppVersion: () => Promise<string>;
+  checkForUpdates: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  onUpdateStatus: (callback: (data: UpdateInfo) => void) => () => void;
 }
 
 // ── Global augmentation ────────────────────────────────────────────

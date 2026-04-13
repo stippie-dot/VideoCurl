@@ -193,3 +193,51 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Update-ready banner ─────────────────────────────────────────── */
+.update-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.update-banner-btn {
+  padding: 5px 14px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.update-banner-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.update-banner-btn.primary {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.update-banner-btn.primary:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

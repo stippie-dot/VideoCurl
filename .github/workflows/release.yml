@@ -47,4 +47,6 @@ jobs:
           name: Video Cull ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/latest.yml

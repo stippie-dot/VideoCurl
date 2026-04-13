@@ -8,6 +8,7 @@ import EmptyState from './components/EmptyState';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
+import type { UpdateInfo } from './types';
 import './App.css';
 
 type Toast = {
@@ -38,6 +39,8 @@ export default function App() {
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
 
   useEffect(() => {
     isPrivateRef.current = isPrivate;
@@ -93,6 +96,15 @@ export default function App() {
 
   useEffect(() => {
     useStore.getState().loadSettings();
+  }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateStatus) return;
+    const unsub = window.electronAPI.onUpdateStatus((info) => {
+      setUpdateInfo(info);
+      if (info.status === 'ready') setUpdateBannerDismissed(false);
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -325,6 +337,21 @@ export default function App() {
               <button className="btn btn-ghost" onClick={handleDropModalAddSession}>Add to session</button>
               <button className="btn btn-ghost" onClick={() => setDropModalPath(null)}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update-ready banner */}
+      {updateInfo.status === 'ready' && !updateBannerDismissed && !isPrivate && (
+        <div className="update-banner">
+          <span>Video Cull v{updateInfo.version} is ready to install.</span>
+          <div className="update-banner-actions">
+            <button className="update-banner-btn primary" onClick={() => window.electronAPI?.installUpdate()}>
+              Restart Now
+            </button>
+            <button className="update-banner-btn" onClick={() => setUpdateBannerDismissed(true)}>
+              Later
+            </button>
           </div>
         </div>
       )}

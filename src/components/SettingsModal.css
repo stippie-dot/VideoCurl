@@ -308,3 +308,98 @@ input[type="range"] {
   padding: 1px 5px;
   white-space: nowrap;
 }
+
+/* ── Updates tab ─────────────────────────────────────────────────── */
+.update-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.version-display {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.update-status-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.update-status-label.update-status-ready {
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.update-status-label.update-status-error {
+  color: #f87171;
+}
+
+.update-status-label.update-status-up-to-date {
+  color: #4ade80;
+}
+
+.update-progress-bar {
+  margin-top: 8px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.update-actions {
+  flex-direction: row !important;
+  gap: 8px;
+}
+
+.btn-check-updates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-check-updates:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.btn-check-updates:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-install-update {
+  padding: 7px 16px;
+  background: #4f46e5;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-install-update:hover {
+  background: #4338ca;
+}

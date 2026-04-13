@@ -47,4 +47,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-action', handler);
     return () => ipcRenderer.removeListener('menu-action', handler);
   },
+
+  // Updates
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('update-status', handler);
+    return () => ipcRenderer.removeListener('update-status', handler);
+  },
 });

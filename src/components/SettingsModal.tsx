@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { X, RotateCcw } from 'lucide-react';
-import type { AppSettings } from '../types';
+import { X, RotateCcw, RefreshCw } from 'lucide-react';
+import type { AppSettings, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
@@ -17,15 +17,27 @@ export default function SettingsModal() {
   const updateSettings = useStore((s) => s.updateSettings);
   const saveSettings = useStore((s) => s.saveSettings);
 
-  const [activeTab, setActiveTab] = useState<'general' | 'keybindings' | 'advanced'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'keybindings' | 'advanced' | 'updates'>('general');
   const [localSettings, setLocalSettings] = useState<AppSettings>(globalSettings);
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
 
   // Sync when opening
   useEffect(() => {
     if (isOpen) {
       setLocalSettings(useStore.getState().settings);
+      if (window.electronAPI?.getAppVersion) {
+        window.electronAPI.getAppVersion().then(setAppVersion);
+      }
     }
   }, [isOpen, globalSettings]);
+
+  // Subscribe to update status events
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateStatus) return;
+    const unsub = window.electronAPI.onUpdateStatus((info) => setUpdateInfo(info));
+    return unsub;
+  }, []);
 
   if (!isOpen) return null;
 
@@ -70,6 +82,10 @@ export default function SettingsModal() {
             <button className={`tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
             <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
             <button className={`tab-btn ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>Advanced</button>
+            <button className={`tab-btn ${activeTab === 'updates' ? 'active' : ''}`} onClick={() => setActiveTab('updates')}>
+              Updates
+              {updateInfo.status === 'ready' && <span className="update-dot" />}
+            </button>
           </div>
 
           {/* Content Pane */}
@@ -167,6 +183,65 @@ export default function SettingsModal() {
                 </p>
               </div>
             )}
+
+            {activeTab === 'updates' && (() => {
+              const statusLabel: Record<string, string> = {
+                idle: 'Not checked yet',
+                checking: 'Checking for updates…',
+                available: `Update available: v${updateInfo.version}`,
+                downloading: `Downloading… ${updateInfo.percent ?? 0}%`,
+                ready: `v${updateInfo.version} ready to install`,
+                'up-to-date': 'You\'re up to date',
+                error: `Error: ${updateInfo.message ?? 'unknown'}`,
+              };
+              const isReady = updateInfo.status === 'ready';
+              const isBusy = updateInfo.status === 'checking' || updateInfo.status === 'downloading' || updateInfo.status === 'available';
+              return (
+                <div className="settings-form">
+                  <div className="form-group">
+                    <label>Current Version</label>
+                    <span className="version-display">v{appVersion || '…'}</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Status</label>
+                    <span className={`update-status-label update-status-${updateInfo.status}`}>
+                      {statusLabel[updateInfo.status] ?? updateInfo.status}
+                    </span>
+                    {updateInfo.status === 'downloading' && (
+                      <div className="update-progress-bar">
+                        <div className="update-progress-fill" style={{ width: `${updateInfo.percent ?? 0}%` }} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="form-group update-actions">
+                    {!isReady && (
+                      <button
+                        className="btn-check-updates"
+                        onClick={() => window.electronAPI?.checkForUpdates()}
+                        disabled={isBusy}
+                      >
+                        <RefreshCw size={14} />
+                        {updateInfo.status === 'checking' ? 'Checking…' : 'Check for updates'}
+                      </button>
+                    )}
+                    {isReady && (
+                      <button
+                        className="btn-install-update"
+                        onClick={() => window.electronAPI?.installUpdate()}
+                      >
+                        Restart to Install v{updateInfo.version}
+                      </button>
+                    )}
+                  </div>
+
+                  <span className="help-text">
+                    Updates are downloaded automatically in the background. You will be notified when one is ready to install.
+                  </span>
+                </div>
+              );
+            })()}
 
             {activeTab === 'advanced' && (
               <div className="settings-form">

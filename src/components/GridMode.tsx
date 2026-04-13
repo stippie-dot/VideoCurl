@@ -68,14 +68,15 @@ export default function GridMode() {
   const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (cardWidth + GAP)));
 
   // Build flat row items: headers + card rows
-  const rows: RowItem[] = useMemo(() => {
+  const { rows, rowStructureKey } = useMemo(() => {
     if (!groupByFolder) {
       // No grouping — just chunk into rows of cards
       const result: RowItem[] = [];
       for (let i = 0; i < filteredVideos.length; i += columnCount) {
         result.push({ type: 'cards', videos: filteredVideos.slice(i, i + columnCount) });
       }
-      return result;
+      const structureKey = result.map((row) => `c:${row.videos.length}`).join('|');
+      return { rows: result, rowStructureKey: structureKey };
     }
 
     // Group by folder
@@ -110,13 +111,16 @@ export default function GridMode() {
         result.push({ type: 'cards', videos: group.videos.slice(i, i + columnCount) });
       }
     }
-    return result;
+    const structureKey = result
+      .map((row) => (row.type === 'header' ? `h:${row.label}` : `c:${row.videos.length}`))
+      .join('|');
+    return { rows: result, rowStructureKey: structureKey };
   }, [filteredVideos, columnCount, groupByFolder, directory]);
 
-  // Reset list cache ONLY when structural physical dimensions change layout measurements
+  // Invalidate react-window size cache when row structure changes (e.g. folder re-ordering).
   useEffect(() => {
     listRef.current?.resetAfterIndex(0);
-  }, [columnCount, cardScale, groupByFolder]);
+  }, [columnCount, cardScale, groupByFolder, rowStructureKey]);
 
   const getItemSize = useCallback(
     (index: number) => rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,

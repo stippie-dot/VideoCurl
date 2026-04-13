@@ -94,6 +94,9 @@ Small, high-impact changes. No architectural dependencies.
 
 ### 1.1 Drag & Drop Folder Opening
 
+**Status:** Implemented in `1.5.0`.
+**Note:** "Open as new" is implemented. "Add to current session" UI/flow is in place, but true multi-directory session behavior is still pending Phase 3.
+
 **Decision:** Drop target is the entire app window. Supports **adding** a directory to the
 current session, not just replacing it. Distinction between "add" and "open new" must be
 explicit in the UI.
@@ -109,6 +112,9 @@ explicit in the UI.
 
 ### 1.2 Privacy Screen
 
+**Status:** Implemented in `1.5.0`.
+**Note:** Current implementation uses a full-window privacy overlay image toggle on `Shift+Esc` (instead of pure black), with input blocking while active.
+
 **Decision:** Solid black overlay covering the entire window. Toggle with **Shift+Esc**
 (hardcoded, not configurable for simplicity). Same key toggles it off.
 
@@ -120,6 +126,9 @@ explicit in the UI.
 - No "Video Cull" branding or text shown — pure black.
 
 ### 1.3 Recent Directories
+
+**Status:** Implemented in `1.5.0`.
+**Note:** Recent directories are shown in both sidebar and empty state, with stale-path validation and startup pruning.
 
 **Decision:** Shown in **both** locations — sidebar dropdown and empty state — but subtle and
 non-distracting.
@@ -807,7 +816,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | Phase | Status | Version | Merged |
 |---|---|---|---|
 | P0 — SQLite migration | ✅ Merged to main | `1.4.0` | 2026-04-10 |
-| P1 — Quick wins | ⬜ Not started | `1.5.0` | — |
+| P1 — Quick wins | ✅ Merged to main | `1.5.0` | 2026-04-13 |
 | P2 — Culling enhancements | ⬜ Not started | `1.6.0` | — |
 | P3 — Cache architecture | ⬜ Not started | `1.7.0` | — |
 | P4 — Extended mode | ⬜ Not started | `2.0.0` | — |

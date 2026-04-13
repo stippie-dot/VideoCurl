@@ -2,6 +2,11 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.5.1] - 2026-04-13
+
+### Fixed
+- Grid mode now invalidates its virtualization cache immediately after folder or subfolder reordering, preventing large spacing gaps and overlap until the window is resized.
+
 ## [1.5.0] - 2026-04-13
 
 ### Added

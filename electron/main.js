@@ -339,6 +339,16 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0];
 });
 
+// 1b. Validate a drag-dropped path — confirms it exists and is a directory
+ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
+  try {
+    const stats = await fs.stat(droppedPath);
+    return { valid: true, isDirectory: stats.isDirectory() };
+  } catch {
+    return { valid: false, isDirectory: false };
+  }
+});
+
 // 2. Scan directory for video files
 ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   log.info(`[scan-directory] called for: ${dirPath}`);

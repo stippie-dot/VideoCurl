@@ -67,6 +67,68 @@
   word-break: break-all;
 }
 
+.btn-recents-toggle {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.btn-recents-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.recents-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recents-item {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  text-align: left;
+}
+
+.recents-item:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
+}
+
+.recents-item:disabled {
+  cursor: default;
+}
+
+.recents-item-active,
+.recents-item-active:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.recents-clear-btn {
+  align-self: flex-start;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 /* ── Checkbox ── */
 .checkbox-label {
   display: flex;

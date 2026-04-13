@@ -77,6 +77,8 @@ export interface AppSettings {
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
+  recentDirectories: string[];
+  recentDirectoryTimestamps: Record<string, number>;
   // Review mode — context-independent
   keyKeep: Keybind;
   keyDelete: Keybind;
@@ -173,6 +175,8 @@ export interface VideoStore {
   removeDeletedVideos: (deletedPaths: string[]) => void;
   addBookmark: (videoId: string, time: number) => void;
   removeBookmark: (videoId: string, time: number) => void;
+  clearRecentDirectories: () => void;
+  removeRecentDirectory: (dir: string) => void;
 
   // Settings Actions
   setIsSettingsModalOpen: (val: boolean) => void;
@@ -184,6 +188,7 @@ export interface VideoStore {
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
+  validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
   openInExplorer: (filePath: string) => Promise<void>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;

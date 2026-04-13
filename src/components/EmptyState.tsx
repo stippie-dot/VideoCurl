@@ -1,18 +1,43 @@
 import useStore from '../store';
 import { FolderOpen, Film, Settings } from 'lucide-react';
 import { formatKeybind } from '../keybinds';
+import { formatRelativeTime, formatRecentPath } from '../utils';
 import './EmptyState.css';
 
-export default function EmptyState() {
+interface EmptyStateProps {
+  onNotify: (message: string, kind?: 'info' | 'error') => void;
+}
+
+export default function EmptyState({ onNotify }: EmptyStateProps) {
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
   const settings = useStore((s) => s.settings);
+  const recentDirectories = settings.recentDirectories;
+  const recentDirectoryTimestamps = settings.recentDirectoryTimestamps;
+  const clearRecentDirectories = useStore((s) => s.clearRecentDirectories);
+  const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
+
+
 
   const handleSelect = async () => {
     if (!window.electronAPI) return;
     const dir = await window.electronAPI.selectDirectory();
     if (dir) setDirectory(dir);
+  };
+
+  const handleOpenRecent = async (dir: string) => {
+    if (!window.electronAPI) {
+      setDirectory(dir);
+      return;
+    }
+    const result = await window.electronAPI.validateDroppedPath(dir);
+    if (!result.valid || !result.isDirectory) {
+      removeRecentDirectory(dir);
+      onNotify('This recent folder is no longer available.', 'error');
+      return;
+    }
+    setDirectory(dir);
   };
 
   return (
@@ -41,6 +66,37 @@ export default function EmptyState() {
         />
         Include subfolders
       </label>
+
+      {recentDirectories.length > 0 && (
+        <div className="empty-recents">
+          <div className="empty-recents-header">
+            <p className="empty-recents-title">Recent folders</p>
+            <button
+              className="empty-recents-clear"
+              onClick={() => {
+                clearRecentDirectories();
+                onNotify('Cleared recent folders.', 'info');
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+          <ul className="empty-recents-list">
+            {recentDirectories.slice(0, 5).map((dir) => (
+              <li key={dir}>
+                <button
+                  className="empty-recent-item"
+                  title={`${dir} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[dir])}`}
+                  onClick={() => void handleOpenRecent(dir)}
+                >
+                  <span className="empty-recent-main">{formatRecentPath(dir)}</span>
+                  <span className="empty-recent-meta">{formatRelativeTime(recentDirectoryTimestamps[dir])}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="empty-shortcuts">
         <span><kbd>{formatKeybind(settings.keyKeep)}</kbd> Keep</span>

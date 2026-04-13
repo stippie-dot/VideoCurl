@@ -50,5 +50,38 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     }
   }
 
+  // Ensure recentDirectories is an array (handle old config)
+  if (!Array.isArray(result.recentDirectories)) {
+    result.recentDirectories = [];
+  }
+
+  if (!result.recentDirectoryTimestamps || typeof result.recentDirectoryTimestamps !== 'object') {
+    result.recentDirectoryTimestamps = {};
+  }
+
   return result as Partial<AppSettings>;
+}
+
+/**
+ * Asynchronously prune stale recent directories by validating each path exists.
+ * Called during app startup to keep the recents list fresh and trustworthy.
+ */
+export async function pruneRecentDirectories(
+  recentDirectories: string[],
+  validator: (path: string) => Promise<{ valid: boolean; isDirectory: boolean }>
+): Promise<string[]> {
+  if (recentDirectories.length === 0) return [];
+
+  const validatedPaths: string[] = [];
+  for (const path of recentDirectories) {
+    try {
+      const result = await validator(path);
+      if (result.valid && result.isDirectory) {
+        validatedPaths.push(path);
+      }
+    } catch {
+      // Silently skip paths that fail validation
+    }
+  }
+  return validatedPaths;
 }

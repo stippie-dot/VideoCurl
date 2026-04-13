@@ -2,6 +2,38 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.5.0] - 2026-04-13
+
+### Added
+- Drag-and-drop folder opening for the full app window, with directory validation and clear error feedback for invalid drops.
+- Folder choice flow when another directory is already open: "Open as new" or "Add to current session".
+- Privacy screen toggle on `Shift+Esc` with a full-window overlay image (`src/assets/privacy-screen-dashboard-cover.png`).
+- Recent directories with persisted timestamps, shown in both sidebar and empty state.
+- Toast notification system for info and error feedback, with auto-dismiss and manual close.
+- Keyboard-accessible folder choice modal with focus trapping and Escape-to-close.
+
+### Changed
+- Empty state recent-folders UI simplified to a minimal text-first layout.
+- Recent folders shown in UI are limited to the 5 most recent entries.
+- "Include subfolders" control moved directly under "Open Directory" for a cleaner flow.
+- "Clear all" in recent folders is styled as a clearer interactive control.
+- Relative-time and recent-path formatting utilities were centralized in `src/utils.ts` and reused across components.
+
+### Fixed
+- Renderer-to-main bridge now exposes dropped-path validation (`validateDroppedPath`) through preload.
+- Privacy mode now blocks non-toggle keyboard input and prevents conflicting actions while active.
+- Review-mode Escape handling no longer conflicts with `Shift+Esc` privacy toggle.
+- Stale recent-directory entries are removed when invalid and are also pruned on app startup.
+- Fixed regex path-splitting escape issue in sidebar recent-path formatting.
+
+### Documentation
+- Updated `README.md` with current quick-win features and privacy-screen shortcut.
+
+### In Progress
+- "Add to current session" currently shows a placeholder notification and is not fully implemented yet.
+
+---
+
 ## [1.4.0] - 2026-04-10
 
 Final stable release for the SQLite migration track.

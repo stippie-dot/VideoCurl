@@ -156,7 +156,8 @@ export default function ReviewMode() {
       const s = useStore.getState().settings;
 
       // Escape is always hardcoded — not configurable
-      if (e.key === 'Escape') {
+      // Skip if Shift is held (reserved for privacy screen toggle in App.tsx)
+      if (e.key === 'Escape' && !e.shiftKey) {
         e.preventDefault();
         if (isPlaying) setIsPlaying(false);
         else close();

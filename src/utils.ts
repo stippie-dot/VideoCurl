@@ -49,6 +49,29 @@ export function calcThumbGrid(count: number): { cols: number; rows: number } {
   return { cols, rows: Math.ceil(count / cols) };
 }
 
+/**
+ * Format a timestamp (ms) to a relative time string (e.g., "2h ago").
+ */
+export function formatRelativeTime(ts: number | undefined): string {
+  if (!ts) return 'unknown';
+  const diffMs = Date.now() - ts;
+  const diffMin = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  const diffDay = Math.round(diffHour / 24);
+  return `${diffDay}d ago`;
+}
+
+/**
+ * Format an absolute path to show only the last two segments (e.g., "Videos / Footage").
+ */
+export function formatRecentPath(p: string): string {
+  const parts = p.split(/[/\\]/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[parts.length - 2]} / ${parts[parts.length - 1]}`;
+  return p;
+}
+
 export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.m4v'];
 
 export function isWebSupported(path: string): boolean {

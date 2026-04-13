@@ -42,6 +42,10 @@ The main screen shows your entire library at a glance — every video represente
 - Filter by file size (50 MB+, 100 MB+, 500 MB+, 1 GB+)
 - Sort by name, size, duration, or date — ascending or descending
 - Quick inline preview for supported formats, external player for everything else
+- Drag & drop folder opening anywhere in the app window, with directory validation and clear error feedback
+- Recent directories in both sidebar and empty state, with stale-entry auto-cleanup
+- Keyboard-friendly choice modals (Tab/Shift+Tab navigation, Esc to close)
+- Privacy screen toggle with `Shift+Esc` for instant on/off concealment
 
 ### Review Mode
 
@@ -53,15 +57,6 @@ A fullscreen, one-at-a-time view for when you actually want to pay attention. Ke
 - Undo any decision at any time before you commit the batch delete
 - **Bookmarks** — press `B` while playing to drop a timestamped bookmark; bookmarks persist across sessions and appear as clickable chips below the player
 - **Playback speed** — `[` / `]` to step through 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×; speed persists as you move between videos
-
-### Phase 1: Quick Wins
-
-Quality-of-life features that make the app faster to use.
-
-- **Drag & drop folder opening** — Drop a folder anywhere on the app window to open it (or replace the current one). File and shortcut drops are rejected with clear error feedback.
-- **Privacy screen** — Press `Shift+Esc` to toggle a full-bleed overlay that blocks all input and hides the interface. Useful when someone walks by.
-- **Recent directories** — The app remembers your last 8 opened folders. Access them from a dropdown in the sidebar or a list on the empty state. Timestamps show when each folder was last opened (e.g., \"2h ago\"). Stale folders are removed automatically.
-- **Keyboard-friendly modals** — Tab through buttons, ESC to close. All modals are accessible and quick to navigate.
 
 ### Thumbnail Generation
 

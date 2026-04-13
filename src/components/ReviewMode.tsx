@@ -52,8 +52,7 @@ export default function ReviewMode() {
   const total = filteredVideos.length;
   const bookmarks = video?.bookmarks ?? [];
 
-  // Capture auto-play intent at construction time (useRef initializer runs exactly once)
-  const autoPlayRef = useRef(useStore.getState().reviewAutoPlay);
+  const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -69,19 +68,20 @@ export default function ReviewMode() {
     return isWebSupported(video.path);
   }, [video]);
 
-  // Reset position when video changes; auto-play on first mount if flagged
-  // Cleanup restores the ref so StrictMode's double-invocation sees the same value both times
+  // One-shot autoplay: only the initially play-clicked video should auto-play.
   useEffect(() => {
-    const shouldPlay = autoPlayRef.current;
+    const currentVideoId = video?.id ?? null;
+    if (lastVideoIdRef.current === currentVideoId) return;
+    lastVideoIdRef.current = currentVideoId;
+
+    const shouldPlay = useStore.getState().reviewAutoPlay;
     if (shouldPlay) {
-      autoPlayRef.current = false;
       useStore.getState().setReviewAutoPlay(false);
       setIsPlaying(true);
     } else {
       setIsPlaying(false);
     }
     setCurrentTime(0);
-    return () => { autoPlayRef.current = shouldPlay; };
   }, [video?.id]);
 
   // When playback starts: apply persisted speed, then sync speed changes back from the player

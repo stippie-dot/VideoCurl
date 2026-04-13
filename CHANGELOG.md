@@ -6,6 +6,11 @@ All notable changes to Video Cull will be documented here.
 
 ### Fixed
 - Grid mode now invalidates its virtualization cache immediately after folder or subfolder reordering, preventing large spacing gaps and overlap until the window is resized.
+- Closing review mode now returns to the previous grid scroll position instead of resetting to the top.
+- Autoplay from grid play-click is now one-shot: only the initially clicked video auto-plays, while next/previous navigation opens in thumbnail view.
+
+### Documentation
+- Roadmap hover-scrub notes now clarify that scrub interaction applies only over the thumbnail strip and activates when at least 4 thumbnails are available.
 
 ## [1.5.0] - 2026-04-13
 

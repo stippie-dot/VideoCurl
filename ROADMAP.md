@@ -152,8 +152,8 @@ Culling workflow improvements available in Minimal and Extended.
 
 ### 2.1 Hover Scrub
 
-**Decision:** Mouse position across the card width controls which thumbnail is shown — no
-animation, no timer. Moving the cursor left-to-right scrubs through the thumbnails
+**Decision:** Mouse position across the thumbnail strip controls which thumbnail is shown — no
+animation, no timer. Moving the cursor left-to-right over the thumbnails scrubs through them
 instantly, exactly like the YouTube progress bar preview. **Togglable in Settings** (default: on).
 
 **Why not a 2fps flipbook:** A timed interval at 2fps looks like a broken slideshow and
@@ -161,10 +161,10 @@ gives no sense of control. Mouse-scrub is instantaneous and feels native.
 
 **Implementation notes:**
 - Add `hoverScrub: boolean` to `AppSettings` (default `true`).
-- In `VideoCard.tsx`, on `mousemove` calculate `thumbIndex = Math.floor((mouseX / cardWidth) * thumbnails.length)`.
+- In `VideoCard.tsx`, on `mousemove` over the thumbnail strip, calculate `thumbIndex = Math.floor((mouseX / stripWidth) * thumbnails.length)`.
 - Throttle state updates with `requestAnimationFrame` — not every `mousemove` event. Set a `rafPending` flag, skip events while a frame is already queued, clear the flag inside the rAF callback. This caps re-renders at ~60fps regardless of mouse speed.
 - On `mouseleave`, reset `activeThumbIndex` to 0 (first thumbnail).
-- Only activates if `thumbnails.length > 1` and the setting is enabled.
+- Only activates if `thumbnails.length >= 4` and the setting is enabled.
 - When disabled, cards revert to current behaviour: static first thumbnail on hover, no interaction.
 - Works for all files regardless of codec support.
 

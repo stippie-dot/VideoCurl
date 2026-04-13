@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { VariableSizeList } from 'react-window';
+import type { ListOnScrollProps } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
@@ -10,6 +11,8 @@ const BASE_CARD_WIDTH = 450;
 const BASE_CARD_HEIGHT = 360;
 const GAP = 12;
 const HEADER_HEIGHT = 44;
+
+let persistedGridScroll = { directory: null as string | null, offset: 0 };
 
 interface HeaderRow {
   type: 'header';
@@ -50,6 +53,17 @@ export default function GridMode() {
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<VariableSizeList>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  const initialScrollOffset = useMemo(() => {
+    if (persistedGridScroll.directory !== directory) return 0;
+    return persistedGridScroll.offset;
+  }, [directory]);
+
+  useEffect(() => {
+    if (persistedGridScroll.directory !== directory) {
+      persistedGridScroll = { directory, offset: 0 };
+    }
+  }, [directory]);
 
   const cardWidth = Math.round(BASE_CARD_WIDTH * cardScale);
   const cardHeight = Math.round(BASE_CARD_HEIGHT * cardScale);
@@ -138,6 +152,11 @@ export default function GridMode() {
 
   const columnWidth = (dimensions.width - GAP * (columnCount + 1)) / columnCount;
 
+  const handleScroll = useCallback(({ scrollOffset, scrollUpdateWasRequested }: ListOnScrollProps) => {
+    if (scrollUpdateWasRequested) return;
+    persistedGridScroll = { directory, offset: scrollOffset };
+  }, [directory]);
+
   const Row = useCallback(({ index, style, data }: { index: number; style: React.CSSProperties; data: RowItem[] }) => {
     const item = data[index];
 
@@ -185,10 +204,12 @@ export default function GridMode() {
           ref={listRef}
           height={dimensions.height}
           width={dimensions.width}
+          initialScrollOffset={initialScrollOffset}
           itemCount={rows.length}
           itemData={rows}
           itemSize={getItemSize}
           overscanCount={2}
+          onScroll={handleScroll}
         >
           {Row}
         </VariableSizeList>

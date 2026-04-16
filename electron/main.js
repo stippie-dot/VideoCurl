@@ -226,6 +226,13 @@ function setApplicationMenu() {
           accelerator: 'CmdOrCtrl+Shift+R',
           click: () => mainWindow && mainWindow.webContents.send('menu-action', 'clear-cache')
         },
+        {
+          label: 'Export Report...',
+          id: 'export-report',
+          enabled: false,
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'export-report')
+        },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
@@ -291,6 +298,16 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+function setExportReportEnabled(enabled) {
+  const menu = Menu.getApplicationMenu();
+  const item = menu?.getMenuItemById('export-report');
+  if (item) item.enabled = enabled;
+}
+
+ipcMain.on('set-export-report-available', (_event, enabled) => {
+  setExportReportEnabled(Boolean(enabled));
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -328,6 +345,203 @@ function thumbRelative(absPath) {
 
 function videoForDb(v) {
   return { ...v, thumbnails: v.thumbnails?.map(thumbRelative) ?? [] };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const index = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / Math.pow(1024, index);
+  return `${value.toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
+}
+
+function formatDuration(seconds) {
+  if (seconds == null || seconds <= 0) return '--:--';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function formatDate(timestampMs) {
+  if (!timestampMs) return '--';
+  return new Date(timestampMs).toLocaleDateString('nl-NL', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+async function isValidLoadedPath(filePath) {
+  if (!currentScanDir || !knownVideoPaths.has(filePath)) return false;
+  return isPathWithinDir(filePath, currentScanDir);
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
+function buildReportHtml(videos, dirPath) {
+  const sortedVideos = [...videos].sort((a, b) => a.filename.localeCompare(b.filename));
+
+  const getRelativeFolder = (videoPath) => {
+    const folder = path.dirname(videoPath);
+    const rel = path.relative(dirPath, folder).replace(/\\/g, '/');
+    if (!rel || rel === '.') return 'Root';
+    return rel;
+  };
+
+  const groupByFolder = (items) => {
+    const map = new Map();
+    for (const video of items) {
+      const folder = getRelativeFolder(video.path);
+      const group = map.get(folder);
+      if (group) {
+        group.push(video);
+      } else {
+        map.set(folder, [video]);
+      }
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([folder, folderVideos]) => ({ folder, videos: folderVideos }));
+  };
+
+  const groups = {
+    keep: sortedVideos.filter((video) => video.status === 'keep'),
+    delete: sortedVideos.filter((video) => video.status === 'delete'),
+    skipped: sortedVideos.filter((video) => video.status === 'skipped'),
+    pending: sortedVideos.filter((video) => video.status === 'pending'),
+  };
+
+  const totalSize = sortedVideos.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+  const keptSize = groups.keep.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+  const deletedSize = groups.delete.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+  const skippedSize = groups.skipped.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+  const pendingSize = groups.pending.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+
+  const rowHtml = (video) => `
+    <tr>
+      <td class="filename" title="${escapeHtml(video.path)}">${escapeHtml(video.filename)}</td>
+      <td>${escapeHtml(formatBytes(video.sizeBytes || 0))}</td>
+      <td>${escapeHtml(formatDuration(video.durationSecs))}</td>
+      <td>${escapeHtml(formatDate(video.metadataDate || video.date))}</td>
+      <td><span class="status status-${escapeHtml(video.status)}">${escapeHtml(video.status)}</span></td>
+    </tr>`;
+
+  const folderSectionHtml = (folder, items) => `
+    <div class="folder-group">
+      <h3>${escapeHtml(folder)} <span>(${items.length})</span></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Duration</th>
+            <th>Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.length > 0 ? items.map(rowHtml).join('') : '<tr><td colspan="5" class="empty">No videos</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+
+  const sectionHtml = (title, items) => {
+    const folders = groupByFolder(items);
+    return `
+    <section class="group">
+      <h2>${escapeHtml(title)} <span>(${items.length})</span></h2>
+      ${items.length > 0 ? folders.map((folderGroup) => folderSectionHtml(folderGroup.folder, folderGroup.videos)).join('') : '<p class="empty">No videos</p>'}
+    </section>`;
+  };
+
+  return `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Video Cull Report</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; font-family: Arial, sans-serif; background: #0b0b12; color: #f3f4f6; }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 48px; }
+      .hero { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+      .hero h1 { margin: 0; font-size: 28px; }
+      .hero p { margin: 0; color: #a1a1aa; }
+      .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 28px; }
+      .card { background: #141420; border: 1px solid #2a2a3a; border-radius: 14px; padding: 16px; }
+      .card .label { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+      .card .value { margin-top: 8px; font-size: 20px; font-weight: 700; }
+      .group { margin: 24px 0; }
+      .group h2 { margin: 0 0 12px; font-size: 18px; }
+      .folder-group { margin: 14px 0 20px; }
+      .folder-group h3 { margin: 0 0 8px; font-size: 14px; color: #d1d5db; }
+      table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 14px; }
+      thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #9ca3af; background: #141420; padding: 12px 14px; border-bottom: 1px solid #2a2a3a; }
+      tbody td { padding: 12px 14px; border-bottom: 1px solid #232333; background: #101018; }
+      tbody tr:nth-child(even) td { background: #0f0f16; }
+      .filename { max-width: 540px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .status { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+      .status-keep { background: rgba(0, 250, 154, 0.16); color: #34d399; }
+      .status-delete { background: rgba(255, 71, 87, 0.16); color: #fb7185; }
+      .status-skipped { background: rgba(245, 158, 11, 0.16); color: #f59e0b; }
+      .status-pending { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
+      .empty { color: #9ca3af; text-align: center; padding: 18px; }
+      @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 640px) { .summary { grid-template-columns: 1fr; } tbody td, thead th { padding: 10px 12px; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Video Cull Report</h1>
+        <p>${escapeHtml(dirPath)}</p>
+        <p>Exported ${escapeHtml(new Date().toLocaleString())}</p>
+      </header>
+
+      <section class="summary">
+        <div class="card"><div class="label">Total videos</div><div class="value">${sortedVideos.length}</div></div>
+        <div class="card"><div class="label">Total size</div><div class="value">${escapeHtml(formatBytes(totalSize))}</div></div>
+        <div class="card"><div class="label">Kept size</div><div class="value">${escapeHtml(formatBytes(keptSize))}</div></div>
+        <div class="card"><div class="label">Delete size</div><div class="value">${escapeHtml(formatBytes(deletedSize))}</div></div>
+        <div class="card"><div class="label">Skipped size</div><div class="value">${escapeHtml(formatBytes(skippedSize))}</div></div>
+        <div class="card"><div class="label">Pending size</div><div class="value">${escapeHtml(formatBytes(pendingSize))}</div></div>
+      </section>
+
+      ${sectionHtml('Keep', groups.keep)}
+      ${sectionHtml('Delete', groups.delete)}
+      ${sectionHtml('Skipped', groups.skipped)}
+      ${sectionHtml('Pending', groups.pending)}
+    </div>
+  </body>
+  </html>`;
 }
 
 // ── IPC Handlers ────────────────────────────────────────────────────────
@@ -531,6 +745,18 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
   }
 });
 
+ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    const db = cache.openDb(dirPath, cacheRootDir);
+    cache.saveCache(db, videos.map(videoForDb));
+    return true;
+  } catch (err) {
+    log.error('[save-cache-atomic] Error saving cache:', err);
+    return false;
+  }
+});
+
 ipcMain.handle('clear-cache', async (event, dirPath) => {
   log.warn(`[clear-cache] called for: ${dirPath}`);
   log.warn(`[clear-cache] stack:\n${new Error().stack}`);
@@ -562,77 +788,102 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 });
 
-// 6. Batch delete → OS Trash, with permanent delete fallback for network drives
+// 6. Batch delete → OS Trash first, then explicit permanent-delete fallback for failures
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
-  let useTrash = true;
 
-  // Security: only allow deleting paths that were part of the last scan
-  const validPaths = filePaths.filter((p) => knownVideoPaths.has(p));
-  if (validPaths.length !== filePaths.length) {
-    log.warn(`[batch-delete] ${filePaths.length - validPaths.length} path(s) rejected (not in known video set)`);
-  }
-  filePaths = validPaths;
-
-  // Test trash support on the first file
-  if (filePaths.length > 0) {
-    try {
-      await shell.trashItem(filePaths[0]);
-      results.push({ path: filePaths[0], success: true, method: 'trash' });
-    } catch (err) {
-      // Trash not supported — ask user before permanently deleting
-      const { response } = await dialog.showMessageBox(mainWindow, {
-        type: 'warning',
-        title: 'Recycle Bin not available',
-        message: `This drive does not support the Recycle Bin.\n\nDo you want to PERMANENTLY delete ${filePaths.length} files?\n\nThis action cannot be undone!`,
-        buttons: ['Cancel', 'Delete Permanently'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      });
-
-      if (response === 0) {
-        // User cancelled
-        return results;
-      }
-
-      // User confirmed permanent delete — delete the first file
-      useTrash = false;
-      try {
-        await fs.unlink(filePaths[0]);
-        results.push({ path: filePaths[0], success: true, method: 'permanent' });
-      } catch (unlinkErr) {
-        results.push({ path: filePaths[0], success: false, error: unlinkErr.message });
-      }
+  const validPaths = [];
+  for (const filePath of filePaths) {
+    if (await isValidLoadedPath(filePath)) {
+      validPaths.push(filePath);
+    } else {
+      log.warn(`[batch-delete] Rejected path outside loaded directory: ${filePath}`);
+      results.push({ path: filePath, success: false, error: 'Path is outside the loaded directory scope.' });
     }
   }
 
-  // Process remaining files
-  for (let i = 1; i < filePaths.length; i++) {
-    const filePath = filePaths[i];
+  if (validPaths.length === 0) return results;
+
+  const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
     try {
-      if (useTrash) {
-        await shell.trashItem(filePath);
-        results.push({ path: filePath, success: true, method: 'trash' });
-      } else {
-        await fs.unlink(filePath);
-        results.push({ path: filePath, success: true, method: 'permanent' });
-      }
+      await shell.trashItem(filePath);
+      return { path: filePath, success: true, method: 'trash' };
     } catch (err) {
-      if (useTrash) {
-        // Fallback for this single file
-        try {
-          await fs.unlink(filePath);
-          results.push({ path: filePath, success: true, method: 'permanent' });
-        } catch (unlinkErr) {
-          results.push({ path: filePath, success: false, error: unlinkErr.message });
-        }
-      } else {
-        results.push({ path: filePath, success: false, error: err.message });
-      }
+      return { path: filePath, success: false, error: err.message };
     }
+  });
+  results.push(...trashResults);
+
+  const failedTrash = trashResults.filter((result) => !result.success).map((result) => result.path);
+  if (failedTrash.length === 0) return results;
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Recycle Bin not available',
+    message: `Recycle Bin failed for ${failedTrash.length} file(s). Do you want to permanently delete them instead?`,
+    detail: 'This action cannot be undone.',
+    buttons: ['Cancel', 'Delete Permanently'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+
+  if (response === 0) return results;
+
+  const permanentResults = await mapWithConcurrency(failedTrash, 5, async (filePath) => {
+    try {
+      await fs.unlink(filePath);
+      return { path: filePath, success: true, method: 'permanent' };
+    } catch (err) {
+      return { path: filePath, success: false, error: err.message, method: 'permanent' };
+    }
+  });
+
+  const merged = new Map(results.map((result) => [result.path, result]));
+  for (const result of permanentResults) {
+    merged.set(result.path, result);
   }
-  return results;
+  return Array.from(merged.values());
+});
+
+ipcMain.handle('export-report', async (_event, videos, dirPath) => {
+  if (!dirPath || !Array.isArray(videos) || videos.length === 0) return 'error';
+
+  const defaultFileName = `videocull-report-${new Date().toISOString().slice(0, 10)}.html`;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Video Cull Report',
+    defaultPath: path.join(app.getPath('documents'), defaultFileName),
+    filters: [{ name: 'HTML', extensions: ['html'] }],
+    properties: ['createDirectory'],
+  });
+
+  if (result.canceled || !result.filePath) return 'cancelled';
+
+  try {
+    const html = buildReportHtml(videos, dirPath);
+    await fs.writeFile(result.filePath, html, 'utf8');
+    return 'saved';
+  } catch (err) {
+    log.error('[export-report] Error writing report:', err);
+    return 'error';
+  }
+});
+
+ipcMain.handle('choose-report-scope', async () => {
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    title: 'Export Report',
+    message: 'What do you want to export?',
+    detail: 'Choose whether to export all loaded videos or only the current filtered selection.',
+    buttons: ['All videos', 'Filtered selection', 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+
+  if (result.response === 0) return 'all';
+  if (result.response === 1) return 'filtered';
+  return null;
 });
 
 

@@ -1,5 +1,5 @@
 // ── Video Status ────────────────────────────────────────────────────
-export type VideoStatus = 'pending' | 'keep' | 'delete';
+export type VideoStatus = 'pending' | 'keep' | 'delete' | 'skipped';
 
 export interface Video {
   id: string;
@@ -39,12 +39,14 @@ export interface DeleteResult {
   path: string;
   success: boolean;
   error?: string;
+  method?: 'trash' | 'permanent';
 }
 
 // ── Statistics ─────────────────────────────────────────────────────
 export interface VideoStats {
   total: number;
   pending: number;
+  skipped: number;
   keep: number;
   delete: number;
   totalSize: number;
@@ -62,6 +64,8 @@ export interface UndoEntry {
   videoId: string;
   previousStatus: VideoStatus;
   previousIndex: number;
+  videoIds?: string[];
+  previousStatuses?: Record<string, VideoStatus>;
 }
 
 // ── Settings ───────────────────────────────────────────────────────
@@ -84,6 +88,7 @@ export interface AppSettings {
   keyKeep: Keybind;
   keyDelete: Keybind;
   keySkip: Keybind;
+  keyReset: Keybind;
   keyUndo: Keybind;
   keyPlay: Keybind;
   keyEnterPlay: Keybind;
@@ -127,6 +132,8 @@ export interface VideoStore {
   sortBy: SortField;
   sortOrder: SortOrder;
   minSizeFilter: number;
+  minDurationFilter: number;
+  folderFilterPath: string | null;
   groupByFolder: boolean;
   folderSortBy: FolderSortField;
   folderSortOrder: SortOrder;
@@ -139,6 +146,8 @@ export interface VideoStore {
   reviewMode: boolean;
   reviewIndex: number;
   reviewAutoPlay: boolean;
+  gridSelectionIds: Set<string>;
+  gridSelectionAnchorId: string | null;
   // Card sizing
   cardScale: number;
 
@@ -160,6 +169,8 @@ export interface VideoStore {
   setSortBy: (sortBy: SortField) => void;
   setSortOrder: (sortOrder: SortOrder) => void;
   setMinSizeFilter: (minSize: number) => void;
+  setMinDurationFilter: (seconds: number) => void;
+  setFolderFilterPath: (folderPath: string | null) => void;
   setGroupByFolder: (val: boolean) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
@@ -170,6 +181,9 @@ export interface VideoStore {
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
   setReviewAutoPlay: (val: boolean) => void;
+  setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  setGridSelectionAnchorId: (videoId: string | null) => void;
+  clearGridSelection: () => void;
   enterReviewAndPlay: (videoId: string) => void;
   setCardScale: (scale: number) => void;
   advanceReview: () => void;
@@ -178,6 +192,7 @@ export interface VideoStore {
   removeBookmark: (videoId: string, time: number) => void;
   clearRecentDirectories: () => void;
   removeRecentDirectory: (dir: string) => void;
+  setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => void;
 
   // Settings Actions
   setIsSettingsModalOpen: (val: boolean) => void;
@@ -210,8 +225,12 @@ export interface ElectronAPI {
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   onMenuAction: (callback: (action: string) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
+  saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
+  exportReport: (videos: Video[], dirPath: string) => Promise<'saved' | 'cancelled' | 'error'>;
+  chooseReportScope: () => Promise<'all' | 'filtered' | null>;
+  setExportReportAvailable: (enabled: boolean) => void;
   openVideo: (filePath: string) => Promise<void>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;

@@ -13,7 +13,7 @@ function getFolder(v: Video): string {
   return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'minDurationFilter' | 'folderFilterPath' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   let filtered = [...state.videos];
 
   if (state.statusFilter !== 'all') {
@@ -22,6 +22,14 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
 
   if (state.minSizeFilter > 0) {
     filtered = filtered.filter((v) => v.sizeBytes >= state.minSizeFilter);
+  }
+
+  if (state.minDurationFilter > 0) {
+    filtered = filtered.filter((v) => (v.durationSecs ?? 0) >= state.minDurationFilter);
+  }
+
+  if (state.folderFilterPath) {
+    filtered = filtered.filter((v) => getFolder(v) === state.folderFilterPath);
   }
 
   const getSortCmp = (a: Video, b: Video): number => {
@@ -81,6 +89,7 @@ function computeStats(videos: Video[]): VideoStats {
   return {
     total: videos.length,
     pending: videos.filter((v) => v.status === 'pending').length,
+    skipped: videos.filter((v) => v.status === 'skipped').length,
     keep: videos.filter((v) => v.status === 'keep').length,
     delete: videos.filter((v) => v.status === 'delete').length,
     totalSize: videos.reduce((sum, v) => sum + v.sizeBytes, 0),
@@ -283,6 +292,29 @@ function persistChangedVideos(directory: string | null, videos: Video[]) {
     });
 }
 
+function persistChangedVideosAtomic(directory: string | null, videos: Video[]) {
+  if (!directory || !window.electronAPI || videos.length === 0) return;
+  const requestToken = nextRetryToken();
+  void window.electronAPI.saveCacheAtomic(directory, videos)
+    .then((ok) => {
+      if (!ok) {
+        console.warn('[store] saveCacheAtomic returned false; falling back to queued save', { count: videos.length });
+        persistChangedVideos(directory, videos);
+        return;
+      }
+
+      const savedTokenByVideoId = new Map<string, number>();
+      for (const video of videos) {
+        savedTokenByVideoId.set(video.id, requestToken);
+      }
+      acknowledgeSavedTokens(directory, savedTokenByVideoId);
+    })
+    .catch((err) => {
+      console.error('[store] saveCacheAtomic failed', err);
+      persistChangedVideos(directory, videos);
+  });
+}
+
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──
   directory: null,
@@ -305,6 +337,8 @@ const useStore = create<VideoStore>((set, get) => ({
   sortBy: 'name',
   sortOrder: 'asc',
   minSizeFilter: 0,
+  minDurationFilter: 0,
+  folderFilterPath: null,
   groupByFolder: true,
   folderSortBy: 'name',
   folderSortOrder: 'asc',
@@ -313,6 +347,8 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewMode: false,
   reviewIndex: 0,
   reviewAutoPlay: false,
+  gridSelectionIds: new Set(),
+  gridSelectionAnchorId: null,
   // ── Card sizing ──
   cardScale: 1,
 
@@ -338,7 +374,7 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   // ── Statistics ──
-  stats: { total: 0, pending: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
+  stats: { total: 0, pending: 0, skipped: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
 
   // ── Actions ──
   setDirectory: (dir: string | null) => {
@@ -444,16 +480,59 @@ const useStore = create<VideoStore>((set, get) => ({
     persistChangedVideos(dir, updatedVideo ? [updatedVideo] : []);
   },
 
+  setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => {
+    if (videoIds.length === 0) return;
+    const targetIds = new Set(videoIds);
+    const previousStatuses: Record<string, VideoStatus> = {};
+    let changed = false;
+
+    const videos = get().videos.map((video) => {
+      if (!targetIds.has(video.id) || video.status === status) return video;
+      previousStatuses[video.id] = video.status;
+      changed = true;
+      return { ...video, status };
+    });
+
+    if (!changed) return;
+
+    const changedIds = new Set(Object.keys(previousStatuses));
+    const changedVideos = videos.filter((video) => changedIds.has(video.id));
+    const undoEntry: UndoEntry = {
+      videoId: videoIds[0],
+      previousStatus: previousStatuses[videoIds[0]] ?? status,
+      previousIndex: get().reviewIndex,
+      videoIds: Object.keys(previousStatuses),
+      previousStatuses,
+    };
+
+    const state = { ...get(), videos };
+    const undoStack = [...get().undoStack, undoEntry];
+    set({
+      videos,
+      filteredVideos: computeFiltered(state),
+      stats: computeStats(videos),
+      undoStack,
+    });
+
+    persistChangedVideosAtomic(get().directory, changedVideos);
+  },
+
   undo: () => {
     const stack = [...get().undoStack];
     if (stack.length === 0) return;
     const action = stack.pop()!;
 
-    const videos = get().videos.map((v) =>
-      v.id === action.videoId ? { ...v, status: action.previousStatus } : v
-    );
+    const videos = get().videos.map((v) => {
+      if (action.videoIds && action.previousStatuses && action.videoIds.includes(v.id)) {
+        return { ...v, status: action.previousStatuses[v.id] ?? v.status };
+      }
+      if (v.id === action.videoId) {
+        return { ...v, status: action.previousStatus };
+      }
+      return v;
+    });
     const state = { ...get(), videos };
-    const restoredVideo = videos.find((v) => v.id === action.videoId);
+    const restoredVideos = action.videoIds ? videos.filter((v) => action.videoIds?.includes(v.id)) : videos.filter((v) => v.id === action.videoId);
     set({
       videos,
       filteredVideos: computeFiltered(state),
@@ -463,7 +542,7 @@ const useStore = create<VideoStore>((set, get) => ({
     });
 
     const dir = get().directory;
-    persistChangedVideos(dir, restoredVideo ? [restoredVideo] : []);
+    persistChangedVideos(dir, restoredVideos);
   },
 
   // ── Filter/Sort ──
@@ -485,6 +564,16 @@ const useStore = create<VideoStore>((set, get) => ({
   setMinSizeFilter: (minSizeFilter: number) => {
     const state = { ...get(), minSizeFilter };
     set({ minSizeFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+
+  setMinDurationFilter: (minDurationFilter: number) => {
+    const state = { ...get(), minDurationFilter };
+    set({ minDurationFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+
+  setFolderFilterPath: (folderFilterPath: string | null) => {
+    const state = { ...get(), folderFilterPath };
+    set({ folderFilterPath, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
   setGroupByFolder: (groupByFolder: boolean) => {
@@ -512,6 +601,13 @@ const useStore = create<VideoStore>((set, get) => ({
   setReviewMode: (reviewMode: boolean) => set({ reviewMode }),
   setReviewIndex: (reviewIndex: number) => set({ reviewIndex }),
   setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
+  setGridSelectionIds: (gridSelectionIds) => set((state) => ({
+    gridSelectionIds: typeof gridSelectionIds === 'function'
+      ? gridSelectionIds(state.gridSelectionIds)
+      : gridSelectionIds,
+  })),
+  setGridSelectionAnchorId: (gridSelectionAnchorId: string | null) => set({ gridSelectionAnchorId }),
+  clearGridSelection: () => set({ gridSelectionIds: new Set(), gridSelectionAnchorId: null }),
   enterReviewAndPlay: (videoId: string) => {
     const idx = get().filteredVideos.findIndex((v) => v.id === videoId);
     if (idx < 0) return;

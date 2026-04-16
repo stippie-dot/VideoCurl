@@ -1,10 +1,10 @@
-import { useEffect, useCallback, useState, useRef, useMemo, memo } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate, calcThumbGrid } from '../utils';
 import {
   Check, Trash2, SkipForward, Undo2, X, Play,
-  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark
+  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw
 } from 'lucide-react';
 import '@videojs/react/video/minimal-skin.css';
 import { createPlayer, videoFeatures } from '@videojs/react';
@@ -51,6 +51,14 @@ export default function ReviewMode() {
   const video = filteredVideos[reviewIndex] ?? null;
   const total = filteredVideos.length;
   const bookmarks = video?.bookmarks ?? [];
+  const { decidedCount, remainingCount, progressPct } = useMemo(() => {
+    const decided = filteredVideos.reduce((sum, item) => (
+      item.status === 'pending' ? sum : sum + 1
+    ), 0);
+    const remaining = Math.max(0, filteredVideos.length - decided);
+    const pct = filteredVideos.length > 0 ? (decided / filteredVideos.length) * 100 : 0;
+    return { decidedCount: decided, remainingCount: remaining, progressPct: pct };
+  }, [filteredVideos]);
 
   const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -124,7 +132,17 @@ export default function ReviewMode() {
     advance();
   }, [video, advance, setVideoStatus]);
 
-  const skip = useCallback(() => advance(), [advance]);
+  const skip = useCallback(() => {
+    if (!video) return;
+    setVideoStatus(video.id, 'skipped');
+    advance();
+  }, [video, advance, setVideoStatus]);
+
+  const resetStatus = useCallback(() => {
+    if (!video) return;
+    setVideoStatus(video.id, 'pending');
+  }, [video, setVideoStatus]);
+
   const handleUndo = useCallback(() => undo(), [undo]);
 
   const handlePlay = useCallback(() => {
@@ -215,13 +233,14 @@ export default function ReviewMode() {
       if (matchesKeybind(e, s.keyKeep))      { e.preventDefault(); markKeep(); return; }
       if (matchesKeybind(e, s.keyDelete))    { e.preventDefault(); markDelete(); return; }
       if (matchesKeybind(e, s.keySkip))      { e.preventDefault(); skip(); return; }
+      if (matchesKeybind(e, s.keyReset))     { e.preventDefault(); resetStatus(); return; }
       if (matchesKeybind(e, s.keyUndo))      { e.preventDefault(); handleUndo(); return; }
       if (matchesKeybind(e, s.keyPlay))      { e.preventDefault(); handlePlay(); return; }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [markKeep, markDelete, skip, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow]);
+  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow]);
 
   if (!video) {
     return (
@@ -247,7 +266,16 @@ export default function ReviewMode() {
         <X size={20} />
       </button>
 
-      <div className="review-counter">{reviewIndex + 1} / {total}</div>
+      <div
+        className="review-counter review-counter-progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progressPct)}
+        style={{ '--review-progress': `${progressPct}%` } as CSSProperties}
+      >
+        <span className="review-counter-text">{reviewIndex + 1} / {total} - {decidedCount} decided, {remainingCount} remaining</span>
+      </div>
 
       <div className={`review-content ${isPlaying ? 'playing' : ''}`}>
         <button
@@ -338,6 +366,12 @@ export default function ReviewMode() {
       </div>
 
       <div className="review-actions">
+        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset (${formatKeybind(settings.keyReset)})`}>
+          <RotateCcw size={18} />
+          <span>Reset</span>
+          <kbd>{formatKeybind(settings.keyReset)}</kbd>
+        </button>
+
         <button
           className="review-action-btn review-undo"
           onClick={handleUndo}

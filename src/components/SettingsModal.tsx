@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { X, RotateCcw, RefreshCw } from 'lucide-react';
+import { X, RotateCcw, RefreshCw, FileDown } from 'lucide-react';
 import type { AppSettings, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
@@ -10,27 +10,49 @@ import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 
-export default function SettingsModal() {
+type SettingsTab = 'general' | 'keybindings' | 'advanced' | 'reports' | 'updates';
+
+interface SettingsModalProps {
+  initialTab?: SettingsTab;
+  tabRequestId?: number;
+}
+
+export default function SettingsModal({ initialTab = 'general', tabRequestId = 0 }: SettingsModalProps) {
   const isOpen = useStore((s) => s.isSettingsModalOpen);
   const close = () => useStore.getState().setIsSettingsModalOpen(false);
   const globalSettings = useStore((s) => s.settings);
   const updateSettings = useStore((s) => s.updateSettings);
   const saveSettings = useStore((s) => s.saveSettings);
+  const directory = useStore((s) => s.directory);
+  const videos = useStore((s) => s.videos);
+  const filteredVideos = useStore((s) => s.filteredVideos);
+  const isScanning = useStore((s) => s.isScanning);
 
-  const [activeTab, setActiveTab] = useState<'general' | 'keybindings' | 'advanced' | 'updates'>('general');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [localSettings, setLocalSettings] = useState<AppSettings>(globalSettings);
   const [appVersion, setAppVersion] = useState<string>('');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
+  const [exportMessage, setExportMessage] = useState<string>('');
 
   // Sync when opening
   useEffect(() => {
-    if (isOpen) {
-      setLocalSettings(useStore.getState().settings);
-      if (window.electronAPI?.getAppVersion) {
-        window.electronAPI.getAppVersion().then(setAppVersion);
-      }
+    if (!isOpen) return;
+    setLocalSettings(useStore.getState().settings);
+    if (window.electronAPI?.getAppVersion) {
+      window.electronAPI.getAppVersion().then(setAppVersion);
     }
+    setExportMessage('');
   }, [isOpen, globalSettings]);
+
+  useEffect(() => {
+    if (isOpen) setActiveTab(initialTab);
+  }, [isOpen, initialTab, tabRequestId]);
+
+  useEffect(() => {
+    if (activeTab !== 'reports') {
+      setExportMessage('');
+    }
+  }, [activeTab]);
 
   // Subscribe to update status events
   useEffect(() => {
@@ -59,6 +81,31 @@ export default function SettingsModal() {
     close();
   };
 
+  const handleExportReport = async () => {
+    if (!window.electronAPI || !directory || videos.length === 0 || isScanning) return;
+
+    const scope = await window.electronAPI.chooseReportScope();
+    if (!scope) {
+      setExportMessage('Export cancelled.');
+      return;
+    }
+
+    const payload = scope === 'filtered' ? filteredVideos : videos;
+    if (payload.length === 0) {
+      setExportMessage(scope === 'filtered' ? 'No videos match the current filters.' : 'No videos available to export.');
+      return;
+    }
+
+    const result = await window.electronAPI.exportReport(payload, directory);
+    if (result === 'saved') {
+      setExportMessage(`Exported ${scope} report (${payload.length} videos).`);
+    } else if (result === 'cancelled') {
+      setExportMessage('Export cancelled.');
+    } else {
+      setExportMessage('Export failed.');
+    }
+  };
+
   // Build a Record<KeybindSettingKey, Keybind> from localSettings for conflict checks
   const currentBinds = Object.fromEntries(
     ALL_SHORTCUTS.map((s) => [s.id, localSettings[s.id] as Keybind])
@@ -82,6 +129,7 @@ export default function SettingsModal() {
             <button className={`tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
             <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
             <button className={`tab-btn ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>Advanced</button>
+            <button className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Reports</button>
             <button className={`tab-btn ${activeTab === 'updates' ? 'active' : ''}`} onClick={() => setActiveTab('updates')}>
               Updates
               {updateInfo.status === 'ready' && <span className="update-dot" />}
@@ -292,6 +340,25 @@ export default function SettingsModal() {
                     Enable Hardware Acceleration (Beta)
                   </label>
                   <span className="help-text indent">Attempts to route decoding through the GPU instead of CPU. May crash on legacy formats.</span>
+                </div>
+
+              </div>
+            )}
+
+            {activeTab === 'reports' && (
+              <div className="settings-form">
+                <div className="form-group">
+                  <label>Export Report</label>
+                  <button
+                    className="btn-check-updates"
+                    onClick={handleExportReport}
+                    disabled={!directory || videos.length === 0 || isScanning}
+                  >
+                    <FileDown size={14} />
+                    Export Report...
+                  </button>
+                  <span className="help-text">Choose filtered or all videos when exporting.</span>
+                  {exportMessage && <span className="help-text">{exportMessage}</span>}
                 </div>
               </div>
             )}

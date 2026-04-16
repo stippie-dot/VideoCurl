@@ -36,6 +36,18 @@
   filter: grayscale(0%);
 }
 
+.card-skipped {
+  border-color: var(--color-skip) !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.24), var(--shadow-sm);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05), var(--bg-surface));
+}
+
+.video-card.card-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.35), var(--shadow-md) !important;
+}
+
 /* ── Thumbnail Area ── */
 .card-thumb-area {
   position: relative;
@@ -71,6 +83,37 @@
 .badge-delete {
   background: var(--color-delete);
   color: #fff;
+}
+.badge-skipped {
+  background: var(--color-skip);
+  color: #16120a;
+}
+
+.card-select-toggle {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+}
+
+.card-select-toggle:hover {
+  border-color: var(--accent);
+  background: rgba(16, 15, 28, 0.85);
+}
+
+.card-select-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(16, 15, 28, 0.9);
 }
 
 /* ── Hover Overlay ── */
@@ -178,4 +221,8 @@
   color: var(--color-delete);
   border-color: rgba(255, 71, 87, 0.3);
   box-shadow: inset 0 0 10px rgba(255, 71, 87, 0.1);
+}
+
+.card-selected .card-hover-overlay {
+  opacity: 0.18;
 }

@@ -1,85 +1,78 @@
 {
-  "name": "video-cull",
-  "version": "1.5.2",
-  "description": "High-performance video culling tool for managing large video collections",
-  "author": "stippie dot",
-  "main": "electron/main.js",
-  "scripts": {
-    "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && node -e \"delete process.env.ELECTRON_RUN_AS_NODE; setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
-    "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
-    "build": "vite build",
-    "package": "vite build && electron-builder --win --publish never",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "release": "vite build && electron-builder --win --publish always"
-  },
-  "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@videojs/react": "^10.0.0-beta.13",
-    "better-sqlite3": "^11.10.0",
-    "electron-log": "^5.4.3",
-    "electron-updater": "^6.8.3",
-    "fluent-ffmpeg": "^2.1.3",
-    "lucide-react": "^0.400.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-window": "^1.8.10",
-    "zustand": "^4.5.5"
-  },
-  "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@types/react-window": "^1.8.8",
-    "@vitejs/plugin-react": "^4.3.1",
-    "concurrently": "^9.0.1",
-    "electron": "^32.3.3",
-    "electron-builder": "^25.1.8",
-    "typescript": "^6.0.2",
-    "vite": "^5.4.2",
-    "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "com.videocull.app",
-    "productName": "Video Cull",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*",
-      "node_modules/fluent-ffmpeg/**/*",
-      "node_modules/better-sqlite3/**/*"
-    ],
-    "asarUnpack": [
-      "**/*.{exe,dll,dylib,so,node}",
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*",
-      "node_modules/better-sqlite3/**/*"
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "build/icon.png",
-      "artifactName": "Video.Cull.Setup.${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Video Cull",
-      "installerSidebar": "build/installerSidebar.bmp",
-      "uninstallerSidebar": "build/installerSidebar.bmp"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "stippie-dot",
-      "repo": "VideoCull"
-    }
-  },
-  "license": "AGPL-3.0-only"
+    "name":  "video-cull",
+    "version":  "1.6.0",
+    "description":  "High-performance video culling tool for managing large video collections",
+    "author":  "stippie dot",
+    "main":  "electron/main.js",
+    "scripts":  {
+                    "dev:vite":  "vite",
+                    "dev:electron":  "wait-on http://localhost:5173 \u0026\u0026 node -e \"delete process.env.ELECTRON_RUN_AS_NODE; setTimeout(()=\u003erequire(\u0027child_process\u0027).execSync(\u0027electron .\u0027, {stdio:\u0027inherit\u0027,cwd:process.cwd()}),1000)\"",
+                    "dev":  "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
+                    "build":  "vite build",
+                    "package":  "vite build \u0026\u0026 electron-builder --win --publish never",
+                    "rebuild":  "electron-rebuild -f -w better-sqlite3"
+                },
+    "dependencies":  {
+                         "@ffmpeg-installer/ffmpeg":  "^1.1.0",
+                         "@ffprobe-installer/ffprobe":  "^2.1.2",
+                         "@videojs/react":  "^10.0.0-beta.13",
+                         "better-sqlite3":  "^11.10.0",
+                         "electron-log":  "^5.4.3",
+                         "electron-updater":  "^6.8.3",
+                         "fluent-ffmpeg":  "^2.1.3",
+                         "lucide-react":  "^0.400.0",
+                         "react":  "^18.3.1",
+                         "react-dom":  "^18.3.1",
+                         "react-window":  "^1.8.10",
+                         "zustand":  "^4.5.5"
+                     },
+    "devDependencies":  {
+                            "@electron/rebuild":  "^4.0.3",
+                            "@types/react":  "^19.2.14",
+                            "@types/react-dom":  "^19.2.3",
+                            "@types/react-window":  "^1.8.8",
+                            "@vitejs/plugin-react":  "^4.3.1",
+                            "concurrently":  "^9.0.1",
+                            "electron":  "^32.3.3",
+                            "electron-builder":  "^25.1.8",
+                            "typescript":  "^6.0.2",
+                            "vite":  "^5.4.2",
+                            "wait-on":  "^8.0.1"
+                        },
+    "build":  {
+                  "appId":  "com.videocull.app",
+                  "productName":  "Video Cull",
+                  "directories":  {
+                                      "output":  "release"
+                                  },
+                  "files":  [
+                                "dist/**/*",
+                                "electron/**/*",
+                                "node_modules/@ffmpeg-installer/**/*",
+                                "node_modules/@ffprobe-installer/**/*",
+                                "node_modules/fluent-ffmpeg/**/*",
+                                "node_modules/better-sqlite3/**/*"
+                            ],
+                  "asarUnpack":  [
+                                     "**/*.{exe,dll,dylib,so,node}",
+                                     "node_modules/@ffmpeg-installer/**/*",
+                                     "node_modules/@ffprobe-installer/**/*",
+                                     "node_modules/better-sqlite3/**/*"
+                                 ],
+                  "win":  {
+                              "target":  "nsis",
+                              "icon":  "build/icon.png"
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "createDesktopShortcut":  true,
+                               "createStartMenuShortcut":  true,
+                               "shortcutName":  "Video Cull",
+                               "installerSidebar":  "build/installerSidebar.bmp",
+                               "uninstallerSidebar":  "build/installerSidebar.bmp"
+                           }
+              },
+    "license":  "AGPL-3.0-only"
 }

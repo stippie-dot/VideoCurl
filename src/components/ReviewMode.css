@@ -52,18 +52,42 @@
   top: 46px;
   left: 50%;
   transform: translateX(-50%) translateY(-50%);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500; /* Lighter weight for premium feel */
   color: var(--text-primary);
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 20px;
   backdrop-filter: var(--blur-md);
   -webkit-backdrop-filter: var(--blur-md);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   z-index: 10;
   box-shadow: var(--shadow-sm), var(--glass-glow);
+  max-width: min(72vw, 560px);
+  text-align: center;
+}
+
+.review-counter-progress {
+  background: var(--bg-surface);
+  position: absolute;
+  overflow: hidden;
+}
+
+.review-counter-progress::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--review-progress, 0%);
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.review-counter-text {
+  position: relative;
+  z-index: 1;
 }
 
 /* ── Content ── */
@@ -238,6 +262,16 @@
 .review-btn-play:hover {
   background: var(--accent-dim) !important;
   color: var(--accent) !important;
+}
+
+.review-btn-skip:hover {
+  background: var(--color-skip-dim) !important;
+  color: var(--color-skip) !important;
+}
+
+.review-btn-reset:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary) !important;
 }
 
 /* ── Speed badge (overlay on video while playing) ── */

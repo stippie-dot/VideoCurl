@@ -6,6 +6,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyKeep:               kb('k'),
   keyDelete:             kb('d'),
   keySkip:               kb('s'),
+  keyReset:              kb('r'),
   keyUndo:               kb('z'),
   keyPlay:               kb(' '),
   keyPrevVideo:          kb('arrowleft'),

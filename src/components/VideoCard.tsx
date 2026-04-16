@@ -3,16 +3,19 @@ import type { Video } from '../types';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, isWebSupported } from '../utils';
-import { Check, Trash2, Play } from 'lucide-react';
+import { Check, SkipForward, Square, CheckSquare, Trash2, Play } from 'lucide-react';
 import './VideoCard.css';
 
 interface VideoCardProps {
   video: Video;
   style?: React.CSSProperties;
-  onClick?: (video: Video) => void;
+  isSelected?: boolean;
+  showSelectionControls?: boolean;
+  onClick?: (video: Video, event: React.MouseEvent) => void;
+  onToggleSelect?: (video: Video, event: React.MouseEvent) => void;
 }
 
-export default function VideoCard({ video, style, onClick }: VideoCardProps) {
+export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onToggleSelect }: VideoCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +43,8 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
 
   const statusClass =
     video.status === 'keep' ? 'card-keep' :
-    video.status === 'delete' ? 'card-delete' : '';
+    video.status === 'delete' ? 'card-delete' :
+    video.status === 'skipped' ? 'card-skipped' : '';
 
   const handleKeep = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -64,8 +68,22 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
   };
 
   return (
-    <div ref={cardRef} className={`video-card ${statusClass}`} style={style} onClick={() => onClick?.(video)}>
+    <div ref={cardRef} className={`video-card ${statusClass} ${isSelected ? 'card-selected' : ''}`} style={style} onClick={(e) => onClick?.(video, e)}>
       <div className="card-thumb-area">
+        {showSelectionControls && onToggleSelect && (
+          <button
+            className={`card-select-toggle ${isSelected ? 'active' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(video, e);
+            }}
+            title={isSelected ? 'Unselect' : 'Select'}
+            aria-label={isSelected ? 'Unselect video' : 'Select video'}
+          >
+            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+          </button>
+        )}
+
         {isVisible ? (
           <ThumbnailStrip thumbnails={video.thumbnails} compact />
         ) : (
@@ -76,6 +94,7 @@ export default function VideoCard({ video, style, onClick }: VideoCardProps) {
           <div className={`card-status-badge badge-${video.status}`}>
             {video.status === 'keep' && <Check size={12} />}
             {video.status === 'delete' && <Trash2 size={12} />}
+            {video.status === 'skipped' && <SkipForward size={12} />}
           </div>
         )}
 

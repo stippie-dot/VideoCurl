@@ -2,15 +2,25 @@
 
 All notable changes to Video Cull will be documented here.
 
-## [1.5.2] - 2026-04-13
+## [1.6.0] - 2026-04-16
 
 ### Added
-- In-app auto-updater powered by `electron-updater`: checks for new versions on startup, downloads in the background, and notifies with a persistent banner when ready to install.
-- Updates tab in Preferences showing current version, update status, download progress, download progress bar, and a "Restart to Install" button.
-- "Check for updates" button in the Updates tab for manual checks.
-- Toggle to disable automatic update checks on startup (manual checks always available).
-- GitHub Actions release workflow now uploads `latest.yml` and `.blockmap` alongside the installer for differential updates.
-- Locked installer filename to `Video.Cull.Setup.{version}.exe` for consistent naming across build environments.
+- Minimum duration filter in the sidebar, including a live mm:ss helper.
+- Batch selection mode in grid view with checkbox controls and actions for Keep, Delete, Skip, Reset, and Clear.
+- Folder header Review action to jump into review mode scoped to one folder.
+- Export Report flow in Settings and app menu, including scope selection for all or filtered videos.
+- Review mode reset shortcut with configurable keybind support.
+
+### Changed
+- Review counter pill now doubles as a progress indicator and shows decided versus remaining counts.
+- Report export HTML now includes folder/subfolder grouping and separate Keep, Delete, Pending, and Skipped sections.
+- Batch-delete fallback messaging now clearly reports permanent-delete outcomes when recycle-bin trashing is unavailable.
+
+### Fixed
+- Grid batch selection state now persists when leaving grid view and returning from review mode.
+- Settings tab routing now re-targets correctly from menu actions, including repeated requests to open Reports.
+- Export availability is disabled while scanning to avoid stale-data report generation.
+- Report export cancellation now shows a cancellation message instead of a generic failure.
 
 ## [1.5.1] - 2026-04-13
 
@@ -18,9 +28,6 @@ All notable changes to Video Cull will be documented here.
 - Grid mode now invalidates its virtualization cache immediately after folder or subfolder reordering, preventing large spacing gaps and overlap until the window is resized.
 - Closing review mode now returns to the previous grid scroll position instead of resetting to the top.
 - Autoplay from grid play-click is now one-shot: only the initially clicked video auto-plays, while next/previous navigation opens in thumbnail view.
-
-### Documentation
-- Roadmap hover-scrub notes now clarify that scrub interaction applies only over the thumbnail strip and activates when at least 4 thumbnails are available.
 
 ## [1.5.0] - 2026-04-13
 

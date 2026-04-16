@@ -172,6 +172,7 @@
   margin-top: 2px;
 }
 .stat-keep .stat-value { color: var(--color-keep); }
+.stat-skipped .stat-value { color: var(--color-skip); }
 .stat-delete .stat-value { color: var(--color-delete); }
 .stat-pending .stat-value { color: var(--text-secondary); }
 
@@ -241,6 +242,40 @@
 }
 .sidebar-select:hover {
   border-color: var(--border-hover);
+}
+
+.filter-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-input-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.sidebar-number-input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.sidebar-number-input:hover,
+.sidebar-number-input:focus {
+  border-color: var(--border-hover);
+}
+
+.filter-input-help {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* ── Sort Row ── */

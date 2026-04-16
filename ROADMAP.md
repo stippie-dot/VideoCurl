@@ -152,21 +152,13 @@ Culling workflow improvements available in Minimal and Extended.
 
 ### 2.1 Hover Scrub
 
-**Decision:** Mouse position across the thumbnail strip controls which thumbnail is shown — no
-animation, no timer. Moving the cursor left-to-right over the thumbnails scrubs through them
-instantly, exactly like the YouTube progress bar preview. **Togglable in Settings** (default: on).
+**Status:** Skipped.
 
-**Why not a 2fps flipbook:** A timed interval at 2fps looks like a broken slideshow and
-gives no sense of control. Mouse-scrub is instantaneous and feels native.
+**Decision:** Do not implement hover scrub. Current thumbnail resolution is not high enough for
+meaningful frame scrubbing feedback, so this would add interaction complexity without practical
+value.
 
-**Implementation notes:**
-- Add `hoverScrub: boolean` to `AppSettings` (default `true`).
-- In `VideoCard.tsx`, on `mousemove` over the thumbnail strip, calculate `thumbIndex = Math.floor((mouseX / stripWidth) * thumbnails.length)`.
-- Throttle state updates with `requestAnimationFrame` — not every `mousemove` event. Set a `rafPending` flag, skip events while a frame is already queued, clear the flag inside the rAF callback. This caps re-renders at ~60fps regardless of mouse speed.
-- On `mouseleave`, reset `activeThumbIndex` to 0 (first thumbnail).
-- Only activates if `thumbnails.length >= 4` and the setting is enabled.
-- When disabled, cards revert to current behaviour: static first thumbnail on hover, no interaction.
-- Works for all files regardless of codec support.
+**Note:** Reconsider only if thumbnail quality strategy changes in a future phase.
 
 ### 2.2 Duration Filter (Min Only)
 
@@ -181,17 +173,12 @@ Requires the cache bug (Priority 0) to be fixed first.
 
 ### 2.3 Keyboard Navigation in Grid
 
-**Decision:** Arrow keys navigate card focus; **Enter** opens review mode at the focused
-card; **Space** cycles the card's status (pending → keep → delete → pending).
+**Status:** Skipped.
 
-**Implementation notes:**
-- Track `focusedCardId: string | null` in local `GridMode` state (no store needed).
-- Keydown listener on the grid container (tabIndex=0 so it can receive focus).
-- Arrow keys move focus by ±1 or ±columnCount depending on direction.
-- Focused card gets a visible focus ring (distinct from status colour).
-- Enter: calls `enterReviewAndPlay` with the focused card's video.
-- Escape: clears focus without leaving the grid.
-- Mouse click on a card still opens review mode (existing behaviour unchanged).
+**Decision:** Do not implement grid keyboard navigation. The grid is already dense and mouse-driven,
+and arrow-key focus management adds friction without enough UX benefit for this app.
+
+**Note:** Reconsider only if a dedicated accessibility pass later shows a clear keyboard-first need.
 
 ### 2.4 Session Progress Bar in Review Mode
 
@@ -200,15 +187,16 @@ with decided/remaining counts.
 
 **Implementation notes:**
 - Progress = `(keep + delete)` out of `total` in the current filter (not just position).
-- Bar renders above the review content area as a thin line (4px, accent colour).
+- Progress is rendered in the review counter pill itself (filled background), not as a separate top bar.
 - Counter line becomes: `12 / 47 — 8 decided, 39 remaining`.
 - No pace or time estimates (avoid anxiety-inducing metrics).
 - Both values derived from existing `stats` in the store — no new state.
 
 ### 2.5 Batch Selection in Grid
 
-**Decision:** Shift+click to multi-select cards. A floating action bar appears at the bottom
-when ≥1 card is selected, with Keep / Delete / Clear actions.
+**Decision:** Checkbox-first batch selection with range selection and explicit status actions.
+Selection mode begins on first multi-select, shows checkboxes, and supports Explorer-style
+Shift range selection from an anchor.
 
 **Deletion safety:** All delete operations (single and batch) use Electron's
 `shell.trashItem(path)` — files go to the OS Recycle Bin, not permanently deleted via
@@ -220,13 +208,22 @@ in the app that deletes files.
 
 **Implementation notes:**
 - `selectedIds: Set<string>` in local `GridMode` state.
-- First click: if Shift is held and nothing is selected, start selection.
-- Shift+click on an already-selected card: deselect it.
-- Clicking a card without Shift while in selection mode: deselect all, open review
-  (standard behaviour). A visual selection indicator on the card avoids confusion.
-- Floating bar: fixed at bottom of grid, shows count + Keep / Delete / Clear.
-- Keep/Delete wraps all SQLite writes in a single transaction (`BEGIN`/`COMMIT`) and calls the store's `set()` once with the full updated array — not in a loop. One re-render for the whole batch regardless of selection size.
+- First multi-select action enters selection mode and selects the clicked card.
+- In selection mode, selected cards show checkboxes.
+- Shift+click selects a contiguous range from the selection anchor.
+- Plain click on a selected card unselects it.
+- While selection mode is active, opening/playing videos is only done via the existing card play button.
+- Floating bar: fixed at bottom of grid, shows count + Keep / Delete / Skip / Reset / Clear.
+- Skip sets selected videos to `skipped`.
+- Reset returns selected videos from `keep` / `delete` / `skipped` to `pending`.
+- Batch actions auto-clear selection after apply.
+- Keep/Delete/Skip/Reset wraps all SQLite writes in a single transaction (`BEGIN`/`COMMIT`) and calls the store's `set()` once with the full updated array — not in a loop. One re-render for the whole batch regardless of selection size.
 - Escape key clears selection.
+
+**Review mode decision updates:**
+- Skip marks the current video as `skipped` and advances to the next video.
+- Reset returns the current video from `keep` / `delete` / `skipped` to `pending`.
+- Undo reverses Skip and Reset just like any other status change.
 
 ### 2.6 "Review This Folder" Button on Folder Headers
 
@@ -243,17 +240,20 @@ enters review mode scoped to only that folder's videos.
 
 ### 2.7 Export Decisions as HTML
 
-**Decision:** A styled, self-contained `.html` report. Triggered from a button in the
-sidebar (below the delete action). Saves to a user-chosen location via file dialog.
+**Decision:** A styled, self-contained `.html` report. Triggered from a less prominent entry
+point in the toolbar and Settings, not from the sidebar. The action is only enabled when a
+folder is actually loaded; it remains disabled in the empty state.
 
 **Implementation notes:**
+- Entry points: toolbar item and Settings button only; hidden from the main sidebar.
 - Button label: "Export Report" or similar (small, not prominent).
+- Only enable when a folder is loaded (`directory` is set) and the app is not on empty state.
 - Electron `ipcMain` handler: `exportReport(videos, dirPath)`.
 - Output: single `.html` file with inline CSS (no external dependencies).
 - **All user data (filenames, paths, codec strings) must be passed through `escapeHtml()` before insertion into the template.** A filename like `<script>alert(1)</script>.mp4` would otherwise execute when the report is opened in a browser. The utility replaces `& < > " '` with HTML entities. Zero performance impact.
 - Structure:
   - Header: directory path, export date, summary counts and sizes.
-  - Three sections: Keep / Delete / Pending — each a styled table with filename,
+  - Four sections: Keep / Delete / Pending / Skipped — each a styled table with filename,
     size, duration, date, status badge.
   - Optional: embed the first thumbnail as a base64 `<img>` per row — off by default.
     Warn users clearly: 2,000 videos with thumbnails can produce a 50–150MB HTML file
@@ -618,9 +618,19 @@ in the Electron main process so it can be unit tested independently of the rende
   files — no confusing silent failure.
 - Toolbar shows a count of incompatible videos; clicking it filters the grid to show only
   those files.
-- HTML export: a text-only report (no embedded thumbnails) listing filename, path, codec,
-  resolution, and file size for all incompatible videos. Triggered from the toolbar count
-  button or via a menu action. Same HTML generation approach as the decisions export (Phase 2.7).
+- Unsupported-codec report remains a separate future report track from the current
+  Phase 2.7 decisions report.
+  
+### Core vs Extended
+
+**Current direction:** Keep the split for now, but move codec/compatibility-oriented features
+into the core build when they are needed by the report and playback warnings.
+
+**Decision notes:**
+- Core should include the data needed for unsupported-codec reporting and playback warnings.
+- Extended should remain a temporary container for purely additive features until we decide
+  whether ratings/favorites/analytics belong in core as well.
+- Revisit the split before phase 4 implementation starts.
 
 ### 4.6 "Next Undecided" Jump Navigation
 
@@ -722,8 +732,9 @@ always reflect what the user has actually configured.
 
 | Feature | Reason skipped |
 |---|---|
+| Hover scrub (Phase 2.1) | Skipped — thumbnail resolution is currently too low for useful scrubbing feedback |
+| Grid keyboard nav (Phase 2.3) | Skipped — keyboard focus management added friction without enough UX value |
 | Duplicate comparison screen | Removed — other apps handle this; duplicate_hash column reserved in schema for future |
-| "Maybe" third status | Skip is sufficient for the culling workflow |
 | Tag system | Too much visual clutter for now |
 | Video notes | Skipped in favour of rating + favorites |
 | m3u8 → mp4 conversion | Out of scope for now |
@@ -770,7 +781,7 @@ Avoid committing half-migrated states where two systems coexist but neither full
 |---|---|---|
 | P0 — SQLite migration | `1.4.0` | Invisible to users; JSON auto-migrated |
 | P1 — Quick wins | `1.5.0` | Drag & drop, privacy screen, recent dirs |
-| P2 — Culling enhancements | `1.6.0` | Hover scrub, batch select, HTML export, etc. |
+| P2 — Culling enhancements | `1.6.0` | Duration filter, progress bar, batch select, HTML export, etc. |
 | P3 — Cache architecture | `1.7.0` | Per-drive mode, multi-directory, migration dialog |
 | P4 — Extended mode | `2.0.0` | Ratings, analytics, codec — major milestone |
 | P5 — Documentation | `2.1.0` | Additive, ships with or after P4 |
@@ -817,7 +828,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 |---|---|---|---|
 | P0 — SQLite migration | ✅ Merged to main | `1.4.0` | 2026-04-10 |
 | P1 — Quick wins | ✅ Merged to main | `1.5.0` | 2026-04-13 |
-| P2 — Culling enhancements | ⬜ Not started | `1.6.0` | — |
+| P2 — Culling enhancements | ✅ Merged to main | `1.6.0` | 2026-04-16 |
 | P3 — Cache architecture | ⬜ Not started | `1.7.0` | — |
 | P4 — Extended mode | ⬜ Not started | `2.0.0` | — |
 | P5 — Documentation | ⬜ Not started | `2.1.0` | — |
@@ -836,8 +847,6 @@ P1  Privacy screen (Phase 1.2)
 P1  Recent directories (Phase 1.3)
 
 P2  Duration filter (Phase 2.2)
-P2  Hover scrub (Phase 2.1)
-P2  Keyboard grid nav (Phase 2.3)
 P2  Session progress bar (Phase 2.4)
 P2  Batch selection + shell.trashItem deletion safety (Phase 2.5)
 P2  Folder review button (Phase 2.6)

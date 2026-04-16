@@ -4,7 +4,7 @@ import useStore from '../store';
 import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, Maximize2, Settings, ChevronDown
+  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, SkipForward, Maximize2, Settings, ChevronDown
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -12,9 +12,10 @@ interface SidebarProps {
   onRescan: () => void;
   onDirectoryPicked: (path: string) => void;
   onNotify: (message: string, kind?: 'info' | 'error') => void;
+  onOpenSettings: () => void;
 }
 
-export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: SidebarProps) {
+export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenSettings }: SidebarProps) {
   const directory = useStore((s) => s.directory);
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
@@ -27,6 +28,8 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
   const setSortOrder = useStore((s) => s.setSortOrder);
   const minSizeFilter = useStore((s) => s.minSizeFilter);
   const setMinSizeFilter = useStore((s) => s.setMinSizeFilter);
+  const minDurationFilter = useStore((s) => s.minDurationFilter);
+  const setMinDurationFilter = useStore((s) => s.setMinDurationFilter);
   const stats = useStore((s) => s.stats);
   const isScanning = useStore((s) => s.isScanning);
   const scanProgress = useStore((s) => s.scanProgress);
@@ -90,6 +93,15 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
       const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
       const succeeded = results.filter((r) => r.success).map((r) => r.path);
       useStore.getState().removeDeletedVideos(succeeded);
+      const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
+      const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
+      if (permanentSuccessCount > 0 && permanentFailureCount > 0) {
+        onNotify('Some files were permanently deleted, but some still failed.', 'error');
+      } else if (permanentSuccessCount > 0) {
+        onNotify('Some files were permanently deleted because the Recycle Bin was unavailable.', 'error');
+      } else if (permanentFailureCount > 0) {
+        onNotify('Some files could not be deleted.', 'error');
+      }
     } catch (err) {
       console.error('Delete failed:', err);
     }
@@ -112,9 +124,17 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
   const filterOptions: { key: StatusFilter; label: string; icon?: React.ReactNode }[] = [
     { key: 'all', label: 'All' },
     { key: 'pending', label: 'Pending', icon: <Clock size={12} /> },
+    { key: 'skipped', label: 'Skipped', icon: <SkipForward size={12} /> },
     { key: 'keep', label: 'Keep', icon: <Check size={12} /> },
     { key: 'delete', label: 'Delete', icon: <X size={12} /> },
   ];
+
+  const formatDurationInput = (seconds: number): string => {
+    const safeSeconds = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
 
   return (
     <aside className="sidebar">
@@ -234,6 +254,10 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
               <span className="stat-value">{stats.keep}</span>
               <span className="stat-label">Keep</span>
             </div>
+            <div className="stat-item stat-skipped">
+              <span className="stat-value">{stats.skipped}</span>
+              <span className="stat-label">Skipped</span>
+            </div>
             <div className="stat-item stat-delete">
               <span className="stat-value">{stats.delete}</span>
               <span className="stat-label">Delete</span>
@@ -275,6 +299,24 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+
+          <div className="filter-input-group">
+            <label className="filter-input-label" htmlFor="min-duration-filter">Minimum duration (seconds)</label>
+            <input
+              id="min-duration-filter"
+              className="sidebar-number-input"
+              type="number"
+              min={0}
+              step={1}
+              value={minDurationFilter}
+              onChange={(e) => {
+                const raw = Number(e.target.value);
+                const safeValue = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
+                setMinDurationFilter(safeValue);
+              }}
+            />
+            <span className="filter-input-help">Equivalent: {formatDurationInput(minDurationFilter)} (m:ss)</span>
+          </div>
         </section>
       )}
 
@@ -382,23 +424,25 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify }: Sideb
         </section>
       )}
 
-      {(stats.delete > 0) && (
+      {stats.total > 0 && (
         <div className="sidebar-actions">
-          <button
-            className="btn btn-danger"
-            onClick={handleBatchDelete}
-            disabled={isDeleting}
-          >
-            <Trash2 size={16} />
-            {isDeleting
-              ? 'Deleting…'
-              : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
-          </button>
+          {stats.delete > 0 && (
+            <button
+              className="btn btn-danger"
+              onClick={handleBatchDelete}
+              disabled={isDeleting}
+            >
+              <Trash2 size={16} />
+              {isDeleting
+                ? 'Deleting…'
+                : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
+            </button>
+          )}
         </div>
       )}
 
       <div className="sidebar-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-        <button className="settings-icon-btn" onClick={() => useStore.getState().setIsSettingsModalOpen(true)} title="Preferences (Ctrl+,)" style={{ flexShrink: 0 }}>
+        <button className="settings-icon-btn" onClick={onOpenSettings} title="Preferences (Ctrl+,)" style={{ flexShrink: 0 }}>
           <Settings size={18} />
         </button>
 

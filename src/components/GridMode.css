@@ -2,6 +2,7 @@
   flex: 1;
   overflow: hidden;
   background: transparent; /* Allows main app gradient to show through */
+  position: relative;
 }
 
 .grid-empty {
@@ -41,6 +42,27 @@
   flex-shrink: 0;
 }
 
+.grid-group-review-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.grid-group-review-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
 .grid-group-count {
   font-size: 11px;
   font-weight: 500;
@@ -64,4 +86,61 @@
 
 .grid-card-cell {
   flex-shrink: 0;
+}
+
+.grid-batch-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  background: rgba(10, 10, 15, 0.88);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg), var(--glass-glow);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  z-index: 15;
+}
+
+.grid-batch-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.grid-batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grid-batch-btn {
+  padding: 7px 11px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+.grid-batch-keep:hover {
+  color: var(--color-keep);
+}
+
+.grid-batch-delete:hover {
+  color: var(--color-delete);
+}
+
+.grid-batch-skip:hover {
+  color: var(--color-skip);
+}
+
+.grid-batch-reset:hover {
+  color: var(--text-primary);
+}
+
+.grid-batch-clear:hover {
+  color: var(--text-primary);
 }

@@ -21,7 +21,7 @@ export interface ShortcutDef {
 }
 
 export type KeybindSettingKey =
-  | 'keyKeep' | 'keyDelete' | 'keySkip' | 'keyUndo' | 'keyPlay'
+  | 'keyKeep' | 'keyDelete' | 'keySkip' | 'keyReset' | 'keyUndo' | 'keyPlay'
   | 'keyPrevVideo' | 'keyNextVideo' | 'keyEnterPlay' | 'keyExternalPlayer'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
@@ -35,6 +35,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyKeep',               description: 'Mark as Keep',              group: 'Review mode' },
   { id: 'keyDelete',             description: 'Mark as Delete',            group: 'Review mode' },
   { id: 'keySkip',               description: 'Skip (no decision)',        group: 'Review mode' },
+  { id: 'keyReset',              description: 'Reset to Pending',          group: 'Review mode' },
   { id: 'keyUndo',               description: 'Undo last action',          group: 'Review mode' },
   // Playback controls
   { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode' },

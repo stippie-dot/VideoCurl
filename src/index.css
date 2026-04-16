@@ -41,6 +41,9 @@
   --color-delete: #ff4757;
   --color-delete-dim: rgba(255, 71, 87, 0.15);
   --color-delete-glow: 0 0 20px rgba(255, 71, 87, 0.3);
+  --color-skip: #f59e0b;
+  --color-skip-dim: rgba(245, 158, 11, 0.14);
+  --color-skip-glow: 0 0 18px rgba(245, 158, 11, 0.28);
   --color-pending: rgba(255, 255, 255, 0.4);
   --color-pending-dim: rgba(255, 255, 255, 0.05);
 

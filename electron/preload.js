@@ -33,12 +33,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Cache & Config
   saveCache: (dirPath, videos) => ipcRenderer.invoke('save-cache', dirPath, videos),
+  saveCacheAtomic: (dirPath, videos) => ipcRenderer.invoke('save-cache-atomic', dirPath, videos),
   clearCache: (dirPath) => ipcRenderer.invoke('clear-cache', dirPath),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
 
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),
+  exportReport: (videos, dirPath) => ipcRenderer.invoke('export-report', videos, dirPath),
+  chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
+  setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
 
   // Menu events

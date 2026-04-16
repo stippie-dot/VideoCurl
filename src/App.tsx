@@ -20,6 +20,7 @@ type Toast = {
 export default function App() {
   const directory = useStore((s) => s.directory);
   const videos = useStore((s) => s.videos);
+  const filteredVideos = useStore((s) => s.filteredVideos);
   const reviewMode = useStore((s) => s.reviewMode);
   const isScanning = useStore((s) => s.isScanning);
   const setVideos = useStore((s) => s.setVideos);
@@ -28,15 +29,19 @@ export default function App() {
   const setIsGenerating = useStore((s) => s.setIsGenerating);
   const setGenProgress = useStore((s) => s.setGenProgress);
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
+  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const scanIdRef = useRef(0);
   const isPrivateRef = useRef(false);
   const dragDepthRef = useRef(0);
+  const folderReviewPathRef = useRef<string | null>(null);
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'keybindings' | 'advanced' | 'reports' | 'updates'>('general');
+  const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
@@ -65,6 +70,12 @@ export default function App() {
 
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const openSettings = useCallback((tab: 'general' | 'keybindings' | 'advanced' | 'reports' | 'updates' = 'general') => {
+    setSettingsTab(tab);
+    setSettingsTabRequestId((prev) => prev + 1);
+    useStore.getState().setIsSettingsModalOpen(true);
   }, []);
 
   // Scan directory when selected
@@ -118,7 +129,7 @@ export default function App() {
       if (isPrivateRef.current) return;
       const state = useStore.getState();
       switch (action) {
-        case 'open-settings': { state.setIsSettingsModalOpen(true); break; }
+        case 'open-settings': { openSettings('general'); break; }
         case 'open-directory': {
           const dir = await window.electronAPI.selectDirectory();
           if (dir) handleDirectoryPicked(dir);
@@ -145,6 +156,15 @@ export default function App() {
             const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
             const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
             state.removeDeletedVideos(deletedPaths);
+            const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
+            const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
+            if (permanentSuccessCount > 0 && permanentFailureCount > 0) {
+              pushToast('Some files were permanently deleted, but some still failed.', 'error');
+            } else if (permanentSuccessCount > 0) {
+              pushToast('Some files were permanently deleted because the Recycle Bin was unavailable.', 'error');
+            } else if (permanentFailureCount > 0) {
+              pushToast('Some files could not be deleted.', 'error');
+            }
           }
           break;
         }
@@ -158,6 +178,10 @@ export default function App() {
         case 'play-external': {
           if (state.reviewMode && state.filteredVideos[state.reviewIndex])
             window.electronAPI.openVideo(state.filteredVideos[state.reviewIndex].path);
+          break;
+        }
+        case 'export-report': {
+          openSettings('reports');
           break;
         }
       }
@@ -195,7 +219,18 @@ export default function App() {
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked]);
+  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast]);
+
+  useEffect(() => {
+    window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
+  }, [directory, videos.length, isScanning]);
+
+  useEffect(() => {
+    if (!reviewMode && folderReviewPathRef.current) {
+      folderReviewPathRef.current = null;
+      setFolderFilterPath(null);
+    }
+  }, [reviewMode, setFolderFilterPath]);
 
   useEffect(() => {
     if (directory) handleScan(directory);
@@ -266,15 +301,22 @@ export default function App() {
     }
     if (e.key === 'Tab') {
       e.preventDefault();
-      const buttons = (e.currentTarget as HTMLDivElement).querySelectorAll('button');
+      const buttons = (e.currentTarget as HTMLDivElement).querySelectorAll<HTMLButtonElement>('button');
       if (buttons.length === 0) return;
-      const focused = document.activeElement as HTMLElement;
-      const focusedIndex = Array.from(buttons).indexOf(focused);
+      const focused = document.activeElement;
+      const focusedIndex = focused instanceof HTMLButtonElement ? Array.from(buttons).indexOf(focused) : -1;
       const nextIndex = e.shiftKey ? focusedIndex - 1 : focusedIndex + 1;
       const wrappedIndex = (nextIndex + buttons.length) % buttons.length;
       (buttons[wrappedIndex] as HTMLButtonElement).focus();
     }
   }, []);
+
+  const handleReviewFolder = useCallback((folderPath: string) => {
+    folderReviewPathRef.current = folderPath;
+    setFolderFilterPath(folderPath);
+    useStore.getState().setReviewIndex(0);
+    useStore.getState().setReviewMode(true);
+  }, [setFolderFilterPath]);
 
   return (
     <div
@@ -284,19 +326,20 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <SettingsModal />
+      <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
       {directory && (
         <Sidebar
           onRescan={() => directory && handleScan(directory)}
           onDirectoryPicked={handleDirectoryPicked}
           onNotify={pushToast}
+          onOpenSettings={() => openSettings('general')}
         />
       )}
 
       <main className="app-main">
         {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-        {directory && videos.length > 0 && !reviewMode && <GridMode />}
+        {directory && videos.length > 0 && !reviewMode && <GridMode onReviewFolder={handleReviewFolder} />}
         {reviewMode && <ReviewMode />}
         {isScanning && videos.length === 0 && (
           <div className="scanning-overlay">

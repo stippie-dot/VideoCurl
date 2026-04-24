@@ -35,18 +35,26 @@ interface GridModeProps {
 }
 
 /** Extract display-friendly folder name relative to root directory */
-function getFolderLabel(video: Video, rootDir: string | null): string {
+function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
   const dir = video.path.substring(0, video.path.lastIndexOf(sep));
 
+  if (rootDirs.length === 0) return dir;
+
+  const rootDir = rootDirs.find((root) => dir === root || dir.startsWith(root + sep));
   if (!rootDir) return dir;
 
   // Show relative path from root, or "Root" for top-level
-  if (dir === rootDir) return 'Root';
+  if (dir === rootDir) {
+    const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
+    return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
+  }
   const relative = dir.startsWith(rootDir + sep)
     ? dir.substring(rootDir.length + 1)
     : dir;
-  return relative || 'Root';
+  if (rootDirs.length <= 1) return relative || 'Root';
+  const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
+  return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
 }
 
 function getFolderPath(video: Video): string {
@@ -67,6 +75,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const cardScale = useStore((s) => s.cardScale);
   const groupByFolder = useStore((s) => s.groupByFolder);
   const directory = useStore((s) => s.directory);
+  const directories = useStore((s) => s.directories);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<VariableSizeList>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -120,7 +129,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     let currentGroup: Video[] = [];
 
     for (const video of filteredVideos) {
-      const label = getFolderLabel(video, directory);
+      const label = getFolderLabel(video, directories);
       if (label !== currentLabel) {
         if (currentGroup.length > 0 && currentLabel !== null) {
           groups.push({ label: currentLabel, videos: currentGroup });
@@ -157,7 +166,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
       .map((row) => (row.type === 'header' ? `h:${row.label}` : `c:${row.videos.length}`))
       .join('|');
     return { rows: result, rowStructureKey: structureKey };
-  }, [filteredVideos, columnCount, groupByFolder, directory]);
+  }, [filteredVideos, columnCount, groupByFolder, directories]);
 
   useEffect(() => {
     if (selectedIds.size > 0) {

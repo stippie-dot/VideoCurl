@@ -29,9 +29,81 @@ function sanitizePathForFilename(folderPath) {
  * cacheRootDir — the parent cache directory (e.g. %APPDATA%\Video-Cull\cache).
  * In P3, this will gain a `mode` parameter for per-drive vs centralised.
  */
-function resolveCachePath(folderPath, cacheRootDir) {
+function getDriveKey(folderPath) {
+  const parsed = path.parse(path.resolve(folderPath));
+  return parsed.root.replace(/[\\/]$/, '').toUpperCase();
+}
+
+function getDefaultPerDriveRoot(folderPath, username) {
+  const parsed = path.parse(path.resolve(folderPath));
+  const driveRoot = parsed.root;
+  if (process.platform !== 'win32') {
+    return path.join(driveRoot || path.sep, '.videocull', 'cache');
+  }
+
+  const userRoot = path.join(driveRoot, 'Users', username || '');
+  if (username && fsSync.existsSync(userRoot)) {
+    return path.join(userRoot, '.videocull', 'cache');
+  }
+  return path.join(driveRoot, '.videocull', 'cache');
+}
+
+function normalizeCacheOptions(cacheOptions) {
+  if (typeof cacheOptions === 'string') {
+    return {
+      mode: 'centralised',
+      defaultCentralRoot: cacheOptions,
+      centralCachePath: null,
+      perDriveCachePaths: {},
+      username: '',
+    };
+  }
+  return {
+    mode: cacheOptions?.mode || cacheOptions?.cacheLocation || 'centralised',
+    defaultCentralRoot: cacheOptions?.defaultCentralRoot,
+    centralCachePath: cacheOptions?.centralCachePath || null,
+    perDriveCachePaths: cacheOptions?.perDriveCachePaths || {},
+    username: cacheOptions?.username || '',
+  };
+}
+
+function resolveCachePaths(folderPath, cacheOptions) {
+  const options = normalizeCacheOptions(cacheOptions);
+  const folderKey = sanitizePathForFilename(folderPath);
+  const mode = options.mode;
+
+  if (mode === 'distributed') {
+    const cacheRootDir = path.join(folderPath, '.videocull');
+    fsSync.mkdirSync(cacheRootDir, { recursive: true });
+    return {
+      mode,
+      folderKey,
+      cacheRootDir,
+      dbPath: path.join(cacheRootDir, 'cache.db'),
+      thumbRootDir: path.join(cacheRootDir, 'thumbs'),
+    };
+  }
+
+  let cacheRootDir;
+  if (mode === 'per-drive') {
+    const driveKey = getDriveKey(folderPath);
+    cacheRootDir = options.perDriveCachePaths[driveKey] || getDefaultPerDriveRoot(folderPath, options.username);
+  } else {
+    cacheRootDir = options.centralCachePath || options.defaultCentralRoot;
+  }
+
   fsSync.mkdirSync(cacheRootDir, { recursive: true });
-  return path.join(cacheRootDir, sanitizePathForFilename(folderPath) + '.db');
+  return {
+    mode,
+    folderKey,
+    cacheRootDir,
+    dbPath: path.join(cacheRootDir, `${folderKey}.db`),
+    thumbRootDir: path.join(cacheRootDir, 'thumbs', folderKey),
+  };
+}
+
+function resolveCachePath(folderPath, cacheOptions) {
+  return resolveCachePaths(folderPath, cacheOptions).dbPath;
 }
 
 // ── Schema ────────────────────────────────────────────────────────────────
@@ -66,12 +138,15 @@ const SCHEMA = `
     file_path TEXT NOT NULL,
     PRIMARY KEY (video_id, idx)
   );
+
+  CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
+  CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
+  CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
 `;
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
-let _db = null;
-let _dbFolderPath = null;
+const _dbByPath = new Map();
 
 /**
  * Open (or reuse) the SQLite database for a folder.
@@ -79,35 +154,33 @@ let _dbFolderPath = null;
  * cacheRootDir — computed by main.js from app.getPath('userData').
  * Returns the open Database instance.
  */
-function openDb(folderPath, cacheRootDir) {
-  const dbPath = resolveCachePath(folderPath, cacheRootDir);
+function openDb(folderPath, cacheOptions) {
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
 
-  if (_db && _dbFolderPath === folderPath) {
-    return _db; // reuse existing connection
-  }
+  const existing = _dbByPath.get(dbPath);
+  if (existing) return existing;
 
-  if (_db) {
-    try { _db.close(); } catch { /* ignore */ }
-    _db = null;
-    _dbFolderPath = null;
-  }
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.exec(SCHEMA);
 
-  _db = new Database(dbPath);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
-  _db.exec(SCHEMA);
-
-  _dbFolderPath = folderPath;
+  _dbByPath.set(dbPath, db);
   log.info(`[cache] Opened DB for: ${folderPath}`);
-  return _db;
+  return db;
 }
 
-/** Close the active DB connection. Call on app quit. */
+function closeDbPath(dbPath) {
+  const db = _dbByPath.get(dbPath);
+  if (!db) return;
+  try { db.close(); } catch { /* ignore */ }
+  _dbByPath.delete(dbPath);
+}
+
+/** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
-  if (_db) {
-    try { _db.close(); } catch { /* ignore */ }
-    _db = null;
-    _dbFolderPath = null;
+  for (const dbPath of Array.from(_dbByPath.keys())) {
+    closeDbPath(dbPath);
   }
 }
 
@@ -141,10 +214,19 @@ function loadCacheMap(db) {
       id: row.id,
       status: row.status || 'pending',
       durationSecs: row.duration_secs ?? null,
+      fps: row.fps ?? null,
       metadataDate: row.metadata_date ?? null,
       thumbnails: thumbs,
       bookmarks: row.bookmarks ? JSON.parse(row.bookmarks) : [],
       duplicateHash: row.duplicate_hash ?? null,
+      rating: row.rating ?? 0,
+      favorite: Boolean(row.favorite),
+      compatible: row.compatible !== 0,
+      videoCodec: row.video_codec ?? null,
+      audioCodec: row.audio_codec ?? null,
+      width: row.width ?? null,
+      height: row.height ?? null,
+      osThumbnail: row.os_thumbnail_path ?? null,
     });
   }
   log.info(`[cache] loadCacheMap: ${rows.length} videos, ${withThumbs} with thumbs, ${nonPending} non-pending`);
@@ -161,8 +243,10 @@ function saveCache(db, videos) {
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
-       duration_secs, status, bookmarks, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       duration_secs, fps, status, rating, favorite, compatible,
+       video_codec, audio_codec, width, height, bookmarks,
+       os_thumbnail_path, duplicate_hash, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
@@ -170,8 +254,17 @@ function saveCache(db, videos) {
       file_date   = excluded.file_date,
       metadata_date = COALESCE(excluded.metadata_date, metadata_date),
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
+      fps = COALESCE(excluded.fps, fps),
       status      = excluded.status,
+      rating = excluded.rating,
+      favorite = excluded.favorite,
+      compatible = excluded.compatible,
+      video_codec = COALESCE(excluded.video_codec, video_codec),
+      audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      width = COALESCE(excluded.width, width),
+      height = COALESCE(excluded.height, height),
       bookmarks   = excluded.bookmarks,
+      os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
       updated_at  = excluded.updated_at
   `);
@@ -185,8 +278,12 @@ function saveCache(db, videos) {
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
-        v.durationSecs ?? null, v.status,
+        v.durationSecs ?? null, v.fps ?? null, v.status,
+        v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
+        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
+        v.osThumbnail ?? null,
         v.duplicateHash ?? null,
         Date.now()
       );
@@ -212,8 +309,10 @@ async function saveCacheChunked(db, videos, onProgress) {
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
-       duration_secs, status, bookmarks, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       duration_secs, fps, status, rating, favorite, compatible,
+       video_codec, audio_codec, width, height, bookmarks,
+       os_thumbnail_path, duplicate_hash, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
@@ -221,8 +320,17 @@ async function saveCacheChunked(db, videos, onProgress) {
       file_date   = excluded.file_date,
       metadata_date = COALESCE(excluded.metadata_date, metadata_date),
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
+      fps = COALESCE(excluded.fps, fps),
       status      = excluded.status,
+      rating = excluded.rating,
+      favorite = excluded.favorite,
+      compatible = excluded.compatible,
+      video_codec = COALESCE(excluded.video_codec, video_codec),
+      audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      width = COALESCE(excluded.width, width),
+      height = COALESCE(excluded.height, height),
       bookmarks   = excluded.bookmarks,
+      os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
       updated_at  = excluded.updated_at
   `);
@@ -238,8 +346,12 @@ async function saveCacheChunked(db, videos, onProgress) {
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
-        v.durationSecs ?? null, v.status,
+        v.durationSecs ?? null, v.fps ?? null, v.status,
+        v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
+        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
+        v.osThumbnail ?? null,
         v.duplicateHash ?? null,
         Date.now()
       );
@@ -334,17 +446,12 @@ async function migrateJsonIfNeeded(folderPath, db) {
  * Delete the SQLite DB file for a folder (used by clear-cache).
  * Closes the connection first if it's the active DB.
  */
-function deleteDb(folderPath, cacheRootDir) {
+function deleteDb(folderPath, cacheOptions) {
   log.warn(`[cache] deleteDb called for: ${folderPath}`);
   log.warn(`[cache] deleteDb stack:\n${new Error().stack}`);
 
-  if (_dbFolderPath === folderPath && _db) {
-    try { _db.close(); } catch { /* ignore */ }
-    _db = null;
-    _dbFolderPath = null;
-  }
-
-  const dbPath = resolveCachePath(folderPath, cacheRootDir);
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
+  closeDbPath(dbPath);
   try {
     fsSync.unlinkSync(dbPath);
   } catch {
@@ -358,6 +465,7 @@ function deleteDb(folderPath, cacheRootDir) {
 }
 
 module.exports = {
+  resolveCachePaths,
   resolveCachePath,
   openDb,
   closeDb,

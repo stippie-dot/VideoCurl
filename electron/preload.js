@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Scanning
   scanDirectory: (dirPath, includeSubfolders) =>
     ipcRenderer.invoke('scan-directory', dirPath, includeSubfolders),
+  resetLoadedDirectories: () => ipcRenderer.invoke('reset-loaded-directories'),
   onScanProgress: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('scan-progress', handler);
@@ -37,6 +38,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearCache: (dirPath) => ipcRenderer.invoke('clear-cache', dirPath),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  validateCacheLocation: (dirPath, expectedDriveKey) => ipcRenderer.invoke('validate-cache-location', dirPath, expectedDriveKey),
+  confirmDistributedMode: () => ipcRenderer.invoke('confirm-distributed-mode'),
+  migrateCacheSettings: (oldSettings, newSettings, loadedDirs) =>
+    ipcRenderer.invoke('migrate-cache-settings', oldSettings, newSettings, loadedDirs),
 
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),

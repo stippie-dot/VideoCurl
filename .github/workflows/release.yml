@@ -24,10 +24,48 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve version from tag
+        id: vars
+        shell: bash
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Clean release output
+        shell: pwsh
+        run: |
+          if (Test-Path release) {
+            Remove-Item -Path "release/*.exe","release/*.blockmap","release/latest.yml" -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Build installer
         run: npm run package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate release metadata
+        shell: pwsh
+        run: |
+          $version = '${{ steps.vars.outputs.version }}'
+          $expectedExe = "Video.Cull.Setup.$version.exe"
+          $expectedBlockmap = "Video.Cull.Setup.$version.exe.blockmap"
+          $latestPath = "release/latest.yml"
+
+          if (-not (Test-Path "release/$expectedExe")) {
+            throw "Missing expected installer: release/$expectedExe"
+          }
+
+          if (-not (Test-Path "release/$expectedBlockmap")) {
+            throw "Missing expected blockmap: release/$expectedBlockmap"
+          }
+
+          if (-not (Test-Path $latestPath)) {
+            throw "Missing latest.yml"
+          }
+
+          $latest = Get-Content $latestPath -Raw
+          if ($latest -notmatch "path:\s*$([regex]::Escape($expectedExe))") {
+            throw "latest.yml path does not match expected installer name $expectedExe"
+          }
 
       - name: Extract changelog section
         id: changelog
@@ -48,6 +86,6 @@ jobs:
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
           files: |
-            release/*.exe
-            release/*.blockmap
+            release/Video.Cull.Setup.${{ steps.vars.outputs.version }}.exe
+            release/Video.Cull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
             release/latest.yml

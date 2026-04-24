@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+﻿import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
 import { matchesKeybind } from './keybinds';
 import Sidebar from './components/Sidebar';
@@ -19,6 +19,7 @@ type Toast = {
 
 export default function App() {
   const directory = useStore((s) => s.directory);
+  const directories = useStore((s) => s.directories);
   const videos = useStore((s) => s.videos);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const reviewMode = useStore((s) => s.reviewMode);
@@ -31,6 +32,7 @@ export default function App() {
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
+  const settings = useStore((s) => s.settings);
   const scanIdRef = useRef(0);
   const isPrivateRef = useRef(false);
   const dragDepthRef = useRef(0);
@@ -40,20 +42,21 @@ export default function App() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'keybindings' | 'advanced' | 'reports' | 'updates'>('general');
+  const [settingsTab, setSettingsTab] = useState<'interface' | 'keybindings' | 'cache' | 'processing' | 'updates'>('interface');
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
 
   const handleDirectoryPicked = useCallback((pickedPath: string) => {
-    const currentDir = useStore.getState().directory;
-    if (!currentDir || currentDir === pickedPath) {
+    const currentDirs = useStore.getState().directories;
+    if (currentDirs.length === 0 || currentDirs.includes(pickedPath)) {
       useStore.getState().setDirectory(pickedPath);
       return;
     }
@@ -72,30 +75,56 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const openSettings = useCallback((tab: 'general' | 'keybindings' | 'advanced' | 'reports' | 'updates' = 'general') => {
+  const openSettings = useCallback((tab: 'interface' | 'keybindings' | 'cache' | 'processing' | 'updates' = 'interface') => {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
   }, []);
 
+  const applyAppMode = useCallback(async (appMode: 'minimal' | 'extended', markIntroSeen = true) => {
+    const state = useStore.getState();
+    state.updateSettings({
+      appMode,
+      hasSeenAppModeIntro: markIntroSeen ? true : state.settings.hasSeenAppModeIntro,
+    });
+    await useStore.getState().saveSettings();
+    pushToast(`Switched to ${appMode === 'extended' ? 'Extended' : 'Minimal'} mode.`, 'info');
+  }, [pushToast]);
+
+  const dismissAppModeIntro = useCallback(async () => {
+    const state = useStore.getState();
+    state.updateSettings({ hasSeenAppModeIntro: true });
+    await useStore.getState().saveSettings();
+  }, []);
+
   // Scan directory when selected
-  const handleScan = useCallback(async (dirPath: string) => {
-    if (!window.electronAPI) return;
+  const handleScan = useCallback(async (dirPaths: string[]) => {
+    if (!window.electronAPI || dirPaths.length === 0) return;
     await window.electronAPI.cancelGeneration();
+    await window.electronAPI.resetLoadedDirectories();
     const scanId = ++scanIdRef.current;
     setIsScanning(true);
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
     try {
-      const scannedVideos = await window.electronAPI.scanDirectory(dirPath, includeSubfolders);
+      const scannedGroups = [];
+      for (const dirPath of dirPaths) {
+        const scannedVideos = await window.electronAPI.scanDirectory(dirPath, includeSubfolders);
+        scannedGroups.push({ dirPath, videos: scannedVideos });
+      }
       if (scanId !== scanIdRef.current) return;
-      setVideos(scannedVideos);
+      const allVideos = scannedGroups.flatMap((group) => group.videos);
+      setVideos(allVideos);
       setIsScanning(false);
-      const needThumbs = scannedVideos.filter((v) => !v.thumbnails || v.thumbnails.length === 0);
-      if (needThumbs.length > 0) {
+      const needThumbsTotal = allVideos.filter((v) => !v.thumbnails || v.thumbnails.length === 0).length;
+      if (needThumbsTotal > 0) {
         setIsGenerating(true);
-        setGenProgress({ current: 0, total: needThumbs.length });
-        await window.electronAPI.generateThumbnails(scannedVideos, dirPath);
+        setGenProgress({ current: 0, total: needThumbsTotal });
+        for (const group of scannedGroups) {
+          const needThumbs = group.videos.filter((v) => !v.thumbnails || v.thumbnails.length === 0);
+          if (needThumbs.length === 0) continue;
+          await window.electronAPI.generateThumbnails(needThumbs, group.dirPath);
+        }
         if (scanId === scanIdRef.current) setIsGenerating(false);
       }
     } catch (err) {
@@ -106,7 +135,7 @@ export default function App() {
   }, [includeSubfolders, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress]);
 
   useEffect(() => {
-    useStore.getState().loadSettings();
+    void useStore.getState().loadSettings().finally(() => setSettingsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -129,20 +158,22 @@ export default function App() {
       if (isPrivateRef.current) return;
       const state = useStore.getState();
       switch (action) {
-        case 'open-settings': { openSettings('general'); break; }
+        case 'open-settings': { openSettings('interface'); break; }
         case 'open-directory': {
           const dir = await window.electronAPI.selectDirectory();
           if (dir) handleDirectoryPicked(dir);
           break;
         }
-        case 'rescan-directory': { if (state.directory) handleScan(state.directory); break; }
+        case 'rescan-directory': { if (state.directories.length > 0) handleScan(state.directories); break; }
         case 'clear-cache': {
-          if (state.directory) {
-            const confirmed = window.confirm('Are you sure you want to clear the cache? All manual review decisions will be lost.');
+          if (state.directories.length > 0) {
+            const confirmed = window.confirm('Are you sure you want to clear the cache for all loaded folders? All manual review decisions will be lost.');
             if (confirmed) {
-              await window.electronAPI.clearCache(state.directory);
+              for (const dir of state.directories) {
+                await window.electronAPI.clearCache(dir);
+              }
               state.setVideos([]);
-              handleScan(state.directory);
+              handleScan(state.directories);
             }
           }
           break;
@@ -181,7 +212,12 @@ export default function App() {
           break;
         }
         case 'export-report': {
-          openSettings('reports');
+          openSettings('interface');
+          break;
+        }
+        case 'toggle-app-mode': {
+          const nextMode = state.settings.appMode === 'extended' ? 'minimal' : 'extended';
+          void applyAppMode(nextMode);
           break;
         }
       }
@@ -206,6 +242,10 @@ export default function App() {
       if (matchesKeybind(e, s.keyShowHelp)) {
         e.preventDefault();
         setShowShortcutsHelp((v) => !v);
+      } else if (matchesKeybind(e, s.keyToggleAppMode)) {
+        e.preventDefault();
+        const nextMode = s.appMode === 'extended' ? 'minimal' : 'extended';
+        void applyAppMode(nextMode);
       } else if (e.key === 'Escape') {
         setShowShortcutsHelp(false);
       }
@@ -219,7 +259,7 @@ export default function App() {
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast]);
+  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, applyAppMode]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
@@ -233,10 +273,10 @@ export default function App() {
   }, [reviewMode, setFolderFilterPath]);
 
   useEffect(() => {
-    if (directory) handleScan(directory);
-  }, [directory, handleScan]);
+    if (directories.length > 0) handleScan(directories);
+  }, [directories, handleScan]);
 
-  // ── Drag & Drop ──────────────────────────────────────────────────────────
+  // â”€â”€ Drag & Drop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -288,11 +328,13 @@ export default function App() {
   }, [dropModalPath]);
 
   const handleDropModalAddSession = useCallback(() => {
+    if (!dropModalPath) return;
+    useStore.getState().addDirectory(dropModalPath);
     setDropModalPath(null);
     setTimeout(() => {
-      pushToast('Multi-folder sessions are coming in a future update. Use "Open as new" to replace the current folder.', 'info');
+      pushToast('Folder added to the current session.', 'info');
     }, 50);
-  }, [pushToast]);
+  }, [dropModalPath, pushToast]);
 
   const handleDropModalKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
@@ -330,10 +372,10 @@ export default function App() {
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
       {directory && (
         <Sidebar
-          onRescan={() => directory && handleScan(directory)}
+          onRescan={() => directories.length > 0 && handleScan(directories)}
           onDirectoryPicked={handleDirectoryPicked}
           onNotify={pushToast}
-          onOpenSettings={() => openSettings('general')}
+          onOpenSettings={() => openSettings('interface')}
         />
       )}
 
@@ -344,7 +386,7 @@ export default function App() {
         {isScanning && videos.length === 0 && (
           <div className="scanning-overlay">
             <div className="scanning-spinner" />
-            <p>Scanning for videos…</p>
+            <p>Scanning for videosâ€¦</p>
           </div>
         )}
       </main>
@@ -353,7 +395,7 @@ export default function App() {
       {isDragOver && (
         <div className="drag-overlay">
           <div className="drag-overlay-inner">
-            <span className="drag-overlay-icon">📁</span>
+            <span className="drag-overlay-icon">ðŸ“</span>
             <span>Drop folder to open</span>
           </div>
         </div>
@@ -395,6 +437,19 @@ export default function App() {
             <button className="update-banner-btn" onClick={() => setUpdateBannerDismissed(true)}>
               Later
             </button>
+          </div>
+        </div>
+      )}
+
+      {settingsLoaded && !settings.hasSeenAppModeIntro && !isPrivate && (
+        <div className="mode-intro-backdrop">
+          <div className="mode-intro-modal" role="dialog" aria-modal="true" aria-labelledby="mode-intro-title">
+            <h2 id="mode-intro-title">You're using Video Cull in Extended mode</h2>
+            <p>Ratings, analytics, and more are enabled. You can switch to Minimal anytime in Settings, the View menu, or with your mode shortcut.</p>
+            <div className="mode-intro-actions">
+              <button className="btn btn-ghost" onClick={() => void applyAppMode('minimal')}>Switch to Minimal</button>
+              <button className="btn btn-primary" onClick={() => void dismissAppModeIntro()}>Got it</button>
+            </div>
           </div>
         </div>
       )}

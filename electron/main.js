@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
+const os = require('os');
 const { scanDirectory } = require('./scanner');
 const { processVideos, cancelProcessing } = require('./processor');
 const cache = require('./cache');
@@ -11,7 +12,9 @@ const { autoUpdater } = require('electron-updater');
 const isDev = !app.isPackaged;
 let mainWindow;
 let currentScanDir = null;
-let cacheRootDir = null; // set after app ready
+let currentScanDirs = new Set();
+let defaultCentralCacheRoot = null; // set after app ready
+let activeCacheRoots = new Set();
 
 // Set of known valid video paths, populated on every scan-directory call.
 // All IPC handlers that accept file paths validate against this set.
@@ -22,7 +25,7 @@ const knownVideoPaths = new Set();
  * First does a fast path.resolve check (catches ../ traversal), then follows
  * symlinks with fs.realpath to prevent symlink-based directory traversal.
  * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
- * the path.resolve check is sufficient — the caller's file read will 404.
+ * the path.resolve check is sufficient â€” the caller's file read will 404.
  */
 async function isPathWithinDir(candidate, baseDir) {
   const resolved = path.resolve(candidate);
@@ -40,12 +43,12 @@ async function isPathWithinDir(candidate, baseDir) {
     return real === realBase || real.startsWith(realBase + path.sep);
   } catch {
     // Candidate doesn't exist (e.g. thumbnail still being generated).
-    // path.resolve check above already passed — allow it through.
+    // path.resolve check above already passed â€” allow it through.
     return true;
   }
 }
 
-// ── Window ──────────────────────────────────────────────────────────────
+// â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -70,14 +73,14 @@ function createWindow() {
   }
 }
 
-// ── Custom Protocol for serving thumbnail images and videos ───────────────
+// â”€â”€ Custom Protocol for serving thumbnail images and videos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 protocol.registerSchemesAsPrivileged([
   { scheme: 'thumb', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
   { scheme: 'video', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
 ]);
 
 app.whenReady().then(() => {
-  cacheRootDir = path.join(app.getPath('userData'), 'video-cache');
+  defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
     // thumb:///D:/path/to/.video-cull-thumbs/id/thumb.jpg
@@ -92,11 +95,10 @@ app.whenReady().then(() => {
     if (!filePath.toLowerCase().endsWith('.jpg')) {
       return new Response('Access Denied', { status: 403 });
     }
-    if (!currentScanDir) {
+    if (activeCacheRoots.size === 0) {
       return new Response('Access Denied', { status: 403 });
     }
-    const thumbCacheDir = path.join(cacheRootDir, 'thumbs');
-    if (!await isPathWithinDir(filePath, thumbCacheDir)) {
+    if (!await isPathWithinAnyDir(filePath, activeCacheRoots)) {
       return new Response('Access Denied', { status: 403 });
     }
     
@@ -123,7 +125,7 @@ app.whenReady().then(() => {
     }
 
     // Security: only serve files inside the current scan directory
-    if (!currentScanDir || !await isPathWithinDir(filePath, currentScanDir)) {
+    if (currentScanDirs.size === 0 || !await isPathWithinAnyDir(filePath, currentScanDirs)) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -181,6 +183,7 @@ app.whenReady().then(() => {
 
   createWindow();
   setApplicationMenu();
+  pruneDistributedIndex().catch((err) => log.warn('[cache] Failed to prune distributed index:', err));
   if (!isDev) setupAutoUpdater();
 });
 
@@ -272,6 +275,11 @@ function setApplicationMenu() {
           click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-out')
         },
         { type: 'separator' },
+        {
+          label: 'Switch Minimal / Extended Mode',
+          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'toggle-app-mode')
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'togglefullscreen' },
         ...(isDev ? [{ role: 'toggledevtools' }] : [])
@@ -316,35 +324,200 @@ app.on('before-quit', () => {
   cache.closeDb();
 });
 
-// ── Cache constants ──────────────────────────────────────────────────────
-// Legacy directory name — only used to locate old thumbnails during migration.
+// â”€â”€ Cache constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Legacy directory name â€” only used to locate old thumbnails during migration.
 // New thumbnails are written to cacheRootDir/thumbs/<folderKey>/ from P0 onwards,
 // where folderKey matches the DB filename (same sanitization).
 const THUMB_DIR = '.video-cull-thumbs';
+const CONFIG_FILE = 'settings.json';
+const CACHE_INDEX_FILE = 'cache-index.json';
+const DISTRIBUTED_INDEX_FILE = 'distributed-index.json';
+const ATOMIC_SAVE_SYNC_LIMIT = 1000;
 
-/** Returns the per-folder thumbnail root inside the cache dir. */
-function folderThumbRoot(dirPath) {
-  const folderKey = path.basename(cache.resolveCachePath(dirPath, cacheRootDir), '.db');
-  return path.join(cacheRootDir, 'thumbs', folderKey);
+async function readJsonFile(fileName, fallback) {
+  try {
+    const data = await fs.readFile(path.join(app.getPath('userData'), fileName), 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return fallback;
+  }
 }
 
-// ── Thumbnail path helpers ───────────────────────────────────────────────
+async function writeJsonFile(fileName, data) {
+  await fs.writeFile(path.join(app.getPath('userData'), fileName), JSON.stringify(data, null, 2), 'utf8');
+}
+
+async function getCacheOptions() {
+  const config = await readJsonFile(CONFIG_FILE, {});
+
+  return {
+    mode: config.cacheLocation || 'centralised',
+    defaultCentralRoot: defaultCentralCacheRoot,
+    centralCachePath: config.centralCachePath || null,
+    perDriveCachePaths: config.perDriveCachePaths || {},
+    username: os.userInfo().username,
+  };
+}
+
+/** Returns the resolved cache paths for a loaded folder. */
+function getCachePaths(dirPath, cacheOptions) {
+  return cache.resolveCachePaths(dirPath, cacheOptions);
+}
+
+function normalizeCacheSettings(settings = {}) {
+  return {
+    mode: settings.cacheLocation || 'centralised',
+    defaultCentralRoot: defaultCentralCacheRoot,
+    centralCachePath: settings.centralCachePath || null,
+    perDriveCachePaths: settings.perDriveCachePaths || {},
+    username: os.userInfo().username,
+  };
+}
+
+async function registerCacheFolder(folderPath, cachePaths) {
+  const index = await readJsonFile(CACHE_INDEX_FILE, { knownFolders: [] });
+  const knownFolders = Array.isArray(index.knownFolders) ? index.knownFolders : [];
+  if (!knownFolders.includes(folderPath)) {
+    knownFolders.push(folderPath);
+    await writeJsonFile(CACHE_INDEX_FILE, { ...index, knownFolders });
+  }
+
+  if (cachePaths.mode === 'distributed') {
+    const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+    const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
+    if (!knownDistributedPaths.includes(folderPath)) {
+      knownDistributedPaths.push(folderPath);
+      await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths });
+    }
+  }
+}
+
+async function pruneDistributedIndex() {
+  const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+  const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
+  const pruned = [];
+  for (const folderPath of knownDistributedPaths) {
+    try {
+      const stats = await fs.stat(folderPath);
+      if (stats.isDirectory()) pruned.push(folderPath);
+    } catch {
+      // Drop stale paths.
+    }
+  }
+  if (pruned.length !== knownDistributedPaths.length) {
+    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths: pruned });
+  }
+}
+
+async function testWritableDirectory(dirPath) {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+    const probe = path.join(dirPath, `.videocull-write-test-${Date.now()}.tmp`);
+    await fs.writeFile(probe, 'ok', 'utf8');
+    await fs.unlink(probe).catch(() => {});
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function getDriveKeyForPath(targetPath) {
+  return path.parse(path.resolve(targetPath)).root.replace(/[\\/]$/, '').toUpperCase();
+}
+
+async function movePathIfPresent(source, target) {
+  try {
+    await fs.access(source);
+  } catch {
+    return false;
+  }
+
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  try {
+    await fs.rename(source, target);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fs.cp(source, target, { recursive: true, force: true });
+    await fs.rm(source, { recursive: true, force: true });
+  }
+  return true;
+}
+
+function collectCacheSidecars(dbPath) {
+  return [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
+}
+
+async function migrateOneCache(folderPath, fromOptions, toOptions) {
+  const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
+  const toPaths = cache.resolveCachePaths(folderPath, toOptions);
+  const result = { folderPath, movedDb: false, movedThumbs: false, skipped: false, error: null };
+
+  if (path.resolve(fromPaths.dbPath) === path.resolve(toPaths.dbPath)) {
+    result.skipped = true;
+    return result;
+  }
+
+  try {
+    cache.closeDb();
+    for (const sourceDbPath of collectCacheSidecars(fromPaths.dbPath)) {
+      const suffix = sourceDbPath.slice(fromPaths.dbPath.length);
+      const moved = await movePathIfPresent(sourceDbPath, `${toPaths.dbPath}${suffix}`);
+      result.movedDb = result.movedDb || moved;
+    }
+    result.movedThumbs = await movePathIfPresent(fromPaths.thumbRootDir, toPaths.thumbRootDir);
+  } catch (err) {
+    result.error = err.message;
+  }
+  return result;
+}
+
+async function getKnownCacheFolders(loadedDirs = []) {
+  const index = await readJsonFile(CACHE_INDEX_FILE, { knownFolders: [] });
+  const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+  const knownFolders = Array.isArray(index.knownFolders) ? index.knownFolders : [];
+  const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
+  return Array.from(new Set([...knownFolders, ...knownDistributedPaths, ...loadedDirs].filter(Boolean)));
+}
+
+function cacheRelevantSettingsChanged(oldSettings = {}, newSettings = {}) {
+  return (
+    oldSettings.cacheLocation !== newSettings.cacheLocation ||
+    (oldSettings.centralCachePath || null) !== (newSettings.centralCachePath || null) ||
+    JSON.stringify(oldSettings.perDriveCachePaths || {}) !== JSON.stringify(newSettings.perDriveCachePaths || {})
+  );
+}
+
+function isFolderInsideSync(childFolder, parentFolder) {
+  const child = path.resolve(childFolder);
+  const parent = path.resolve(parentFolder);
+  return child !== parent && child.startsWith(parent + path.sep);
+}
+
+function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
+  const map = cache.loadCacheMap(db);
+  for (const cached of map.values()) {
+    cached.thumbnails = cached.thumbnails.map((thumb) => thumbAbsolute(thumb, cacheRootDir));
+  }
+  return map;
+}
+
+// â”€â”€ Thumbnail path helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The DB always stores paths relative to cacheRootDir (e.g. 'thumbs/id/thumb_01.jpg').
 // The renderer always receives absolute paths. main.js converts at the boundary.
 
-function thumbAbsolute(relPath) {
+function thumbAbsolute(relPath, cacheRootDir) {
   if (!relPath || path.isAbsolute(relPath)) return relPath; // already absolute (legacy)
   return path.join(cacheRootDir, relPath);
 }
 
-function thumbRelative(absPath) {
+function thumbRelative(absPath, cacheRootDir) {
   if (!absPath || !path.isAbsolute(absPath)) return absPath; // already relative
   const rel = path.relative(cacheRootDir, absPath);
   return rel.startsWith('..') ? absPath : rel; // keep absolute if outside cacheRootDir
 }
 
-function videoForDb(v) {
-  return { ...v, thumbnails: v.thumbnails?.map(thumbRelative) ?? [] };
+function videoForDb(v, cacheRootDir) {
+  return { ...v, thumbnails: v.thumbnails?.map((thumb) => thumbRelative(thumb, cacheRootDir)) ?? [] };
 }
 
 function escapeHtml(value) {
@@ -384,9 +557,16 @@ function formatDate(timestampMs) {
   });
 }
 
+async function isPathWithinAnyDir(filePath, dirs) {
+  for (const dir of dirs) {
+    if (await isPathWithinDir(filePath, dir)) return true;
+  }
+  return false;
+}
+
 async function isValidLoadedPath(filePath) {
-  if (!currentScanDir || !knownVideoPaths.has(filePath)) return false;
-  return isPathWithinDir(filePath, currentScanDir);
+  if (currentScanDirs.size === 0 || !knownVideoPaths.has(filePath)) return false;
+  return isPathWithinAnyDir(filePath, currentScanDirs);
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -544,7 +724,7 @@ function buildReportHtml(videos, dirPath) {
   </html>`;
 }
 
-// ── IPC Handlers ────────────────────────────────────────────────────────
+// â”€â”€ IPC Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // 1. Select directory via OS dialog
 ipcMain.handle('select-directory', async () => {
@@ -555,7 +735,7 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0];
 });
 
-// 1b. Validate a drag-dropped path — confirms it exists and is a directory
+// 1b. Validate a drag-dropped path â€” confirms it exists and is a directory
 ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
   try {
     const stats = await fs.stat(droppedPath);
@@ -563,6 +743,16 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
   } catch {
     return { valid: false, isDirectory: false };
   }
+});
+
+ipcMain.handle('reset-loaded-directories', async () => {
+  cancelProcessing();
+  currentScanDir = null;
+  currentScanDirs = new Set();
+  activeCacheRoots = new Set();
+  knownVideoPaths.clear();
+  cache.closeDb();
+  return true;
 });
 
 // 2. Scan directory for video files
@@ -576,29 +766,51 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     throw new Error('Invalid directory path');
   }
 
-  currentScanDir = dirPath;
+  currentScanDir = currentScanDir || dirPath;
+  currentScanDirs.add(dirPath);
+
+  const cacheOptions = await getCacheOptions();
+  const cachePaths = getCachePaths(dirPath, cacheOptions);
+  activeCacheRoots.add(cachePaths.cacheRootDir);
+  await registerCacheFolder(dirPath, cachePaths);
 
   // Open SQLite DB for this directory (creates schema if first time)
-  const db = cache.openDb(dirPath, cacheRootDir);
+  const db = cache.openDb(dirPath, cacheOptions);
 
   // Import old JSON cache if present (first launch after update)
   await cache.migrateJsonIfNeeded(dirPath, db);
 
-  // Load existing cache entries for merging
-  const cachedMap = cache.loadCacheMap(db);
+  // Load existing cache entries for merging. Known subfolder caches are folded in
+  // so opening a parent preserves decisions made when a child folder was opened alone.
+  const cachedMap = loadCacheMapWithAbsoluteThumbs(db, cachePaths.cacheRootDir);
+  const knownCacheFolders = await getKnownCacheFolders();
+  const childCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath));
+  for (const childFolder of childCacheFolders) {
+    try {
+      const childPaths = getCachePaths(childFolder, cacheOptions);
+      activeCacheRoots.add(childPaths.cacheRootDir);
+      const childDb = cache.openDb(childFolder, cacheOptions);
+      const childMap = loadCacheMapWithAbsoluteThumbs(childDb, childPaths.cacheRootDir);
+      for (const [videoId, cached] of childMap) {
+        if (!cachedMap.has(videoId)) cachedMap.set(videoId, cached);
+      }
+    } catch (err) {
+      log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
+    }
+  }
 
   // Ensure the new thumbnail cache directory exists
-  const newThumbRoot = folderThumbRoot(dirPath);
+  const newThumbRoot = cachePaths.thumbRootDir;
   await fs.mkdir(newThumbRoot, { recursive: true });
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when
-  // the DB has no thumbnail records (e.g. first launch after JSON→SQLite migration).
+  // the DB has no thumbnail records (e.g. first launch after JSONâ†’SQLite migration).
   // Runs once per folder; subsequent scans find nothing to move and are instant.
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
   const oldVideoIds = await fs.readdir(oldThumbBase).catch(() => []);
   if (oldVideoIds.length > 0) {
-    log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} → ${newThumbRoot}`);
+    log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} â†’ ${newThumbRoot}`);
     const BATCH = 10;
     for (let i = 0; i < oldVideoIds.length; i += BATCH) {
       await Promise.all(oldVideoIds.slice(i, i + BATCH).map(async (videoId) => {
@@ -637,7 +849,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         ...v,
         status: cached.status,
         durationSecs: cached.durationSecs ?? v.durationSecs,
-        thumbnails: cached.thumbnails.map(thumbAbsolute),
+        thumbnails: cached.thumbnails,
         duplicateHash: cached.duplicateHash || v.duplicateHash,
         metadataDate: cached.metadataDate ?? null,
         bookmarks: cached.bookmarks,
@@ -647,10 +859,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   });
 
   // Persist merged result with relative thumbnail paths so the DB is portable.
-  await cache.saveCacheChunked(db, merged.map(videoForDb));
+  const saveDb = cache.openDb(dirPath, cacheOptions);
+  await cache.saveCacheChunked(saveDb, merged.map((video) => videoForDb(video, cachePaths.cacheRootDir)));
 
-  // Populate the known-paths whitelist for this scan session
-  knownVideoPaths.clear();
+  // Populate the known-paths whitelist for this loaded session
   merged.forEach((v) => knownVideoPaths.add(v.path));
 
   return merged;
@@ -664,9 +876,9 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   // Cancel any in-progress generation before starting a new one
   cancelProcessing();
 
-  // Security: validate that dirPath matches the current scan directory
-  if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
-    log.warn('[generate-thumbnails] dirPath does not match currentScanDir, rejecting');
+  // Security: validate that dirPath is one of the loaded scan directories
+  if (!currentScanDirs.has(dirPath)) {
+    log.warn('[generate-thumbnails] dirPath is not loaded, rejecting');
     return false;
   }
 
@@ -684,7 +896,11 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   });
 
   // Thumbnails are written to the cache directory, not the video folder
-  const thumbDir = folderThumbRoot(dirPath);
+  const cacheOptions = await getCacheOptions();
+  const cachePaths = getCachePaths(dirPath, cacheOptions);
+  activeCacheRoots.add(cachePaths.cacheRootDir);
+  await registerCacheFolder(dirPath, cachePaths);
+  const thumbDir = cachePaths.thumbRootDir;
   await fs.mkdir(thumbDir, { recursive: true });
 
   let config = {};
@@ -736,8 +952,12 @@ ipcMain.handle('cancel-generation', async () => {
 ipcMain.handle('save-cache', async (event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
-    const db = cache.openDb(dirPath, cacheRootDir);
-    await cache.saveCacheChunked(db, videos.map(videoForDb));
+    const cacheOptions = await getCacheOptions();
+    const cachePaths = getCachePaths(dirPath, cacheOptions);
+    activeCacheRoots.add(cachePaths.cacheRootDir);
+    await registerCacheFolder(dirPath, cachePaths);
+    const db = cache.openDb(dirPath, cacheOptions);
+    await cache.saveCacheChunked(db, videos.map((video) => videoForDb(video, cachePaths.cacheRootDir)));
     return true;
   } catch (err) {
     log.error('[save-cache] Error saving cache:', err);
@@ -748,8 +968,18 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
 ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
-    const db = cache.openDb(dirPath, cacheRootDir);
-    cache.saveCache(db, videos.map(videoForDb));
+    const cacheOptions = await getCacheOptions();
+    const cachePaths = getCachePaths(dirPath, cacheOptions);
+    activeCacheRoots.add(cachePaths.cacheRootDir);
+    await registerCacheFolder(dirPath, cachePaths);
+    const db = cache.openDb(dirPath, cacheOptions);
+    const payload = videos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
+    if (payload.length > ATOMIC_SAVE_SYNC_LIMIT) {
+      log.warn(`[save-cache-atomic] ${payload.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+      await cache.saveCacheChunked(db, payload);
+    } else {
+      cache.saveCache(db, payload);
+    }
     return true;
   } catch (err) {
     log.error('[save-cache-atomic] Error saving cache:', err);
@@ -763,19 +993,21 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
 
   // Security: only allow clearing the cache of the currently scanned directory
-  if (!currentScanDir || path.resolve(dirPath) !== path.resolve(currentScanDir)) {
-    log.warn('[clear-cache] dirPath does not match currentScanDir, rejecting');
+  if (!currentScanDirs.has(dirPath)) {
+    log.warn('[clear-cache] dirPath is not loaded, rejecting');
     return false;
   }
 
   cancelProcessing();
 
   // Collect video IDs before deleting the DB so we know which thumb dirs to remove
-  cache.deleteDb(dirPath, cacheRootDir);
+  const cacheOptions = await getCacheOptions();
+  const cachePaths = getCachePaths(dirPath, cacheOptions);
+  cache.deleteDb(dirPath, cacheOptions);
 
   try {
     // Delete the entire per-folder thumb directory in one shot
-    await fs.rm(folderThumbRoot(dirPath), { recursive: true, force: true }).catch(() => {});
+    await fs.rm(cachePaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
 
     // Also clean up any legacy .video-cull-thumbs in the video folder
     const legacyThumbDir = path.join(dirPath, THUMB_DIR);
@@ -788,7 +1020,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 });
 
-// 6. Batch delete → OS Trash first, then explicit permanent-delete fallback for failures
+// 6. Batch delete â†’ OS Trash first, then explicit permanent-delete fallback for failures
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
 
@@ -886,6 +1118,102 @@ ipcMain.handle('choose-report-scope', async () => {
   return null;
 });
 
+ipcMain.handle('validate-cache-location', async (_event, dirPath, expectedDriveKey = null) => {
+  if (!dirPath || typeof dirPath !== 'string') {
+    return { ok: false, error: 'No folder selected.' };
+  }
+  if (expectedDriveKey && getDriveKeyForPath(dirPath) !== String(expectedDriveKey).toUpperCase()) {
+    return { ok: false, error: `Pick a folder on ${expectedDriveKey}.` };
+  }
+  return testWritableDirectory(dirPath);
+});
+
+
+ipcMain.handle('confirm-distributed-mode', async () => {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Distributed mode is not recommended',
+    message: 'Are you sure you want to use Distributed cache mode?',
+    detail: 'Cache is stored in a hidden .videocull folder inside each video folder. Switching back to Centralised or Per-drive later may be impossible without losing cache data if the tracking index is missing or a drive is disconnected.',
+    buttons: ['I understand, use Distributed', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return response === 0;
+});
+ipcMain.handle('migrate-cache-settings', async (_event, oldSettings, newSettings, loadedDirs = []) => {
+  if (!cacheRelevantSettingsChanged(oldSettings, newSettings)) {
+    return { status: 'unchanged', migrated: 0, errors: [] };
+  }
+
+  const knownFolders = await getKnownCacheFolders(Array.isArray(loadedDirs) ? loadedDirs : []);
+  if (knownFolders.length === 0) {
+    return { status: 'no-cache', migrated: 0, errors: [] };
+  }
+
+  const fromOptions = normalizeCacheSettings(oldSettings);
+  const toOptions = normalizeCacheSettings(newSettings);
+  const targetRoots = new Set(knownFolders.map((folderPath) => cache.resolveCachePaths(folderPath, toOptions).cacheRootDir));
+  for (const targetRoot of targetRoots) {
+    const writable = await testWritableDirectory(targetRoot);
+    if (!writable.ok) {
+      return { status: 'error', migrated: 0, errors: [`Cannot write to ${targetRoot}: ${writable.error}`] };
+    }
+  }
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    title: 'Cache storage changed',
+    message: 'How should Video Cull handle existing cache data?',
+    detail: `${knownFolders.length} known folder cache${knownFolders.length === 1 ? '' : 's'} can be moved to the new location. Choose Start fresh to discard cache and regenerate thumbnails/metadata next scan.`,
+    buttons: ['Migrate existing cache', 'Start fresh', 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+
+  if (response === 2) {
+    return { status: 'cancelled', migrated: 0, errors: [] };
+  }
+
+  cache.closeDb();
+
+  if (response === 1) {
+    for (const folderPath of knownFolders) {
+      const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
+      cache.deleteDb(folderPath, fromOptions);
+      await fs.rm(fromPaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+    }
+    if (toOptions.mode === 'distributed') {
+      await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
+    } else {
+      await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+    }
+    await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+    return { status: 'fresh', migrated: 0, errors: [] };
+  }
+
+  const results = [];
+  for (const folderPath of knownFolders) {
+    results.push(await migrateOneCache(folderPath, fromOptions, toOptions));
+  }
+  const errors = results.filter((result) => result.error).map((result) => `${result.folderPath}: ${result.error}`);
+
+  if (toOptions.mode === 'distributed') {
+    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
+  } else {
+    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+  }
+  await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+
+  return {
+    status: errors.length > 0 ? 'partial' : 'migrated',
+    migrated: results.filter((result) => result.movedDb || result.movedThumbs).length,
+    errors,
+  };
+});
+
 
 // 7. Get OS native thumbnail
 ipcMain.handle('get-os-thumbnail', async (_event, filePath) => {
@@ -905,8 +1233,6 @@ ipcMain.handle('open-video', async (_event, filePath) => {
 });
 
 // 9. Config management
-const CONFIG_FILE = 'settings.json';
-
 ipcMain.handle('get-config', async () => {
   try {
     const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
@@ -930,7 +1256,7 @@ ipcMain.handle('save-config', async (_event, config) => {
 
 // 10. Open a directory in explorer
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
-  if (!knownVideoPaths.has(filePath) && !await isPathWithinDir(filePath, currentScanDir)) return;
+  if (!knownVideoPaths.has(filePath) && !await isPathWithinAnyDir(filePath, currentScanDirs)) return;
   shell.showItemInFolder(filePath);
 });
 
@@ -946,7 +1272,7 @@ ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall(false, true);
 });
 
-// ── Auto-updater setup ───────────────────────────────────────────────────
+// â”€â”€ Auto-updater setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function setupAutoUpdater() {
   autoUpdater.logger = log;
   autoUpdater.autoDownload = true;
@@ -988,7 +1314,7 @@ function setupAutoUpdater() {
       const config = JSON.parse(data);
       if (config.autoUpdates === false) return;
     } catch {
-      // No config yet — default is enabled
+      // No config yet â€” default is enabled
     }
     autoUpdater.checkForUpdates();
   }, 5000);

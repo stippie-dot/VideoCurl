@@ -17,6 +17,7 @@ interface SidebarProps {
 
 export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenSettings }: SidebarProps) {
   const directory = useStore((s) => s.directory);
+  const directories = useStore((s) => s.directories);
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
@@ -153,8 +154,8 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
 
         <div className="directory-info">
           <HardDrive size={14} />
-          <span className="directory-path" title={directory || undefined}>
-            {directory}
+          <span className="directory-path" title={directories.join('\n') || directory || undefined}>
+            {directories.length > 1 ? `${directories.length} folders loaded` : directory}
           </span>
           {recentDirectories.length > 1 && (
             <button

@@ -2,6 +2,27 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.7.0] - 2026-04-25
+
+### Added
+- Multi-directory sessions with true Add to Session behavior for dropped or selected folders.
+- Cache storage modes for centralised, per-drive, and distributed cache layouts.
+- Cache migration flow when switching storage modes, with migrate, start fresh, and cancel choices.
+- First-run Minimal/Extended mode notice, Settings mode selector, View menu toggle, and configurable mode shortcut.
+- Per-drive and central cache location validation with write tests before settings are saved.
+
+### Changed
+- Thumbnail files now resolve through cache-mode-aware roots instead of assuming one central cache folder.
+- Grid folder labels include the root folder prefix when multiple roots are loaded.
+- SQLite cache handles are kept per DB path so multi-directory operations do not close each other's connections.
+- Cache writes now preserve future metadata columns when values are present.
+
+### Fixed
+- Batch cache saves fall back to chunked persistence for very large selections to avoid blocking the main process.
+- Distributed cache index entries are pruned on startup when folders are no longer available.
+- Scanner ignores distributed `.videocull` cache folders during recursive scans.
+- Per-drive cache overrides must stay on the drive they configure.
+
 ## [1.6.0] - 2026-04-16
 
 ### Added

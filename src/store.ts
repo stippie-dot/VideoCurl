@@ -97,6 +97,33 @@ function computeStats(videos: Video[]): VideoStats {
   };
 }
 
+function normalizePathForCompare(value: string): string {
+  return value.replace(/[/\\]+/g, '\\').replace(/\\+$/g, '').toLowerCase();
+}
+
+function isPathInsideRoot(filePath: string, rootPath: string): boolean {
+  const file = normalizePathForCompare(filePath);
+  const root = normalizePathForCompare(rootPath);
+  return file === root || file.startsWith(`${root}\\`);
+}
+
+function findRootForVideo(video: Video, directories: string[], fallback: string | null): string | null {
+  const root = directories.find((dir) => isPathInsideRoot(video.path, dir));
+  return root ?? fallback;
+}
+
+function uniqueDirectories(dirs: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const dir of dirs) {
+    const key = normalizePathForCompare(dir);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(dir);
+  }
+  return result;
+}
+
 const SAVE_RETRY_DELAY_MS = 750;
 const MAX_SAVE_RETRY_ATTEMPTS = 3;
 
@@ -263,61 +290,85 @@ function flushRetryQueue() {
     });
 }
 
-function persistChangedVideos(directory: string | null, videos: Video[]) {
-  if (!directory || !window.electronAPI || videos.length === 0) return;
+function persistChangedVideos(directory: string | null, directories: string[], videos: Video[]) {
+  if (!window.electronAPI || videos.length === 0) return;
 
-  const requestToken = nextRetryToken();
+  const videosByRoot = new Map<string, Video[]>();
+  for (const video of videos) {
+    const root = findRootForVideo(video, directories, directory);
+    if (!root) continue;
+    const list = videosByRoot.get(root) ?? [];
+    list.push(video);
+    videosByRoot.set(root, list);
+  }
 
-  void window.electronAPI.saveCache(directory, videos)
-    .then((ok) => {
-      if (ok) {
-        const queueSizeBeforeAck = retryQueueByVideoId.size;
-        const savedTokenByVideoId = new Map<string, number>();
-        for (const video of videos) {
-          savedTokenByVideoId.set(video.id, requestToken);
+  for (const [root, rootVideos] of videosByRoot) {
+    const requestToken = nextRetryToken();
+
+    void window.electronAPI.saveCache(root, rootVideos)
+      .then((ok) => {
+        if (ok) {
+          const queueSizeBeforeAck = retryQueueByVideoId.size;
+          const savedTokenByVideoId = new Map<string, number>();
+          for (const video of rootVideos) {
+            savedTokenByVideoId.set(video.id, requestToken);
+          }
+          acknowledgeSavedTokens(root, savedTokenByVideoId);
+          if (retryDirectory === root && retryQueueByVideoId.size < queueSizeBeforeAck) {
+            retryAttempts = 0;
+          }
+          return;
         }
-        acknowledgeSavedTokens(directory, savedTokenByVideoId);
-        if (retryDirectory === directory && retryQueueByVideoId.size < queueSizeBeforeAck) {
-          retryAttempts = 0;
-        }
-        return;
-      }
 
-      console.warn('[store] saveCache returned false for partial save', { count: videos.length });
-      enqueueRetryVideos(directory, videos, requestToken);
-    })
-    .catch((err) => {
-      console.error('[store] saveCache failed for partial save', err);
-      enqueueRetryVideos(directory, videos, requestToken);
-    });
+        console.warn('[store] saveCache returned false for partial save', { count: rootVideos.length });
+        enqueueRetryVideos(root, rootVideos, requestToken);
+      })
+      .catch((err) => {
+        console.error('[store] saveCache failed for partial save', err);
+        enqueueRetryVideos(root, rootVideos, requestToken);
+      });
+  }
 }
 
-function persistChangedVideosAtomic(directory: string | null, videos: Video[]) {
-  if (!directory || !window.electronAPI || videos.length === 0) return;
-  const requestToken = nextRetryToken();
-  void window.electronAPI.saveCacheAtomic(directory, videos)
-    .then((ok) => {
-      if (!ok) {
-        console.warn('[store] saveCacheAtomic returned false; falling back to queued save', { count: videos.length });
-        persistChangedVideos(directory, videos);
-        return;
-      }
+function persistChangedVideosAtomic(directory: string | null, directories: string[], videos: Video[]) {
+  if (!window.electronAPI || videos.length === 0) return;
 
-      const savedTokenByVideoId = new Map<string, number>();
-      for (const video of videos) {
-        savedTokenByVideoId.set(video.id, requestToken);
-      }
-      acknowledgeSavedTokens(directory, savedTokenByVideoId);
-    })
-    .catch((err) => {
-      console.error('[store] saveCacheAtomic failed', err);
-      persistChangedVideos(directory, videos);
-  });
+  const videosByRoot = new Map<string, Video[]>();
+  for (const video of videos) {
+    const root = findRootForVideo(video, directories, directory);
+    if (!root) continue;
+    const list = videosByRoot.get(root) ?? [];
+    list.push(video);
+    videosByRoot.set(root, list);
+  }
+
+  for (const [root, rootVideos] of videosByRoot) {
+    const requestToken = nextRetryToken();
+    void window.electronAPI.saveCacheAtomic(root, rootVideos)
+      .then((ok) => {
+        if (!ok) {
+          console.warn('[store] saveCacheAtomic returned false; falling back to queued save', { count: rootVideos.length });
+          persistChangedVideos(root, [root], rootVideos);
+          return;
+        }
+
+        const savedTokenByVideoId = new Map<string, number>();
+        for (const video of rootVideos) {
+          savedTokenByVideoId.set(video.id, requestToken);
+        }
+        acknowledgeSavedTokens(root, savedTokenByVideoId);
+      })
+      .catch((err) => {
+        console.error('[store] saveCacheAtomic failed', err);
+        persistChangedVideos(root, [root], rootVideos);
+    });
+  }
 }
 
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──
   directory: null,
+  directories: [],
   includeSubfolders: true,
 
   // ── Videos ──
@@ -358,6 +409,11 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Settings ──
   isSettingsModalOpen: false,
   settings: {
+    appMode: 'extended',
+    hasSeenAppModeIntro: false,
+    cacheLocation: 'centralised',
+    centralCachePath: null,
+    perDriveCachePaths: {},
     thumbsPerVideo: 6,
     defaultCardScale: 1,
     defaultSortBy: 'name',
@@ -392,15 +448,77 @@ const useStore = create<VideoStore>((set, get) => ({
         recentDirectories: updated,
         recentDirectoryTimestamps: prunedTimestamps,
       };
-      set({ directory: dir, settings: newSettings });
+      set({
+        directory: dir,
+        directories: [dir],
+        settings: newSettings,
+        folderFilterPath: null,
+        reviewIndex: 0,
+        undoStack: [],
+        gridSelectionIds: new Set(),
+        gridSelectionAnchorId: null,
+      });
       if (window.electronAPI) {
         void window.electronAPI.saveConfig(newSettings).catch((err) => {
           console.warn('[store] Failed to save directory settings:', err);
         });
       }
     } else {
-      set({ directory: dir });
+      set({
+        directory: null,
+        directories: [],
+        videos: [],
+        filteredVideos: [],
+        stats: computeStats([]),
+        folderFilterPath: null,
+        reviewMode: false,
+        reviewIndex: 0,
+        undoStack: [],
+        gridSelectionIds: new Set(),
+        gridSelectionAnchorId: null,
+      });
     }
+  },
+
+  addDirectory: (dir: string) => {
+    const state = get();
+    const nextDirs = uniqueDirectories([...state.directories, dir]);
+    const existing = state.settings.recentDirectories.filter((d) => d !== dir);
+    const updated = [dir, ...existing].slice(0, 8);
+    const nextTimestamps = { ...state.settings.recentDirectoryTimestamps, [dir]: Date.now() };
+    const prunedTimestamps: Record<string, number> = {};
+    for (const p of updated) {
+      if (nextTimestamps[p]) prunedTimestamps[p] = nextTimestamps[p];
+    }
+    const newSettings = {
+      ...state.settings,
+      recentDirectories: updated,
+      recentDirectoryTimestamps: prunedTimestamps,
+    };
+    set({
+      directory: nextDirs[0] ?? null,
+      directories: nextDirs,
+      settings: newSettings,
+      folderFilterPath: null,
+      reviewIndex: 0,
+    });
+    if (window.electronAPI) {
+      void window.electronAPI.saveConfig(newSettings).catch((err) => {
+        console.warn('[store] Failed to save directory settings:', err);
+      });
+    }
+  },
+
+  setDirectories: (dirs: string[]) => {
+    const nextDirs = uniqueDirectories(dirs);
+    set({
+      directory: nextDirs[0] ?? null,
+      directories: nextDirs,
+      folderFilterPath: null,
+      reviewIndex: 0,
+      gridSelectionIds: new Set(),
+      gridSelectionAnchorId: null,
+    });
   },
 
   setIncludeSubfolders: (val: boolean) => set({ includeSubfolders: val }),
@@ -438,8 +556,8 @@ const useStore = create<VideoStore>((set, get) => ({
       filteredVideos: computeFiltered(state),
     });
 
-    const dir = get().directory;
-    persistChangedVideos(dir, Array.from(changedVideos.values()));
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, Array.from(changedVideos.values()));
   },
 
   setOSThumbnail: (videoId: string, osThumbnail: string) => {
@@ -476,8 +594,8 @@ const useStore = create<VideoStore>((set, get) => ({
       undoStack,
     });
 
-    const dir = get().directory;
-    persistChangedVideos(dir, updatedVideo ? [updatedVideo] : []);
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, updatedVideo ? [updatedVideo] : []);
   },
 
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => {
@@ -514,7 +632,8 @@ const useStore = create<VideoStore>((set, get) => ({
       undoStack,
     });
 
-    persistChangedVideosAtomic(get().directory, changedVideos);
+    const stateNow = get();
+    persistChangedVideosAtomic(stateNow.directory, stateNow.directories, changedVideos);
   },
 
   undo: () => {
@@ -541,8 +660,8 @@ const useStore = create<VideoStore>((set, get) => ({
       reviewIndex: action.previousIndex,
     });
 
-    const dir = get().directory;
-    persistChangedVideos(dir, restoredVideos);
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, restoredVideos);
   },
 
   // ── Filter/Sort ──
@@ -651,9 +770,9 @@ const useStore = create<VideoStore>((set, get) => ({
       }
     );
     if (!updatedVideo) return;
-    const dir = get().directory;
     set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
-    persistChangedVideos(dir, [updatedVideo]);
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
   },
 
   removeBookmark: (videoId, time) => {
@@ -669,9 +788,9 @@ const useStore = create<VideoStore>((set, get) => ({
       }
     );
     if (!updatedVideo) return;
-    const dir = get().directory;
     set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
-    persistChangedVideos(dir, [updatedVideo]);
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
   },
 
   clearRecentDirectories: () => {

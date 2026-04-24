@@ -829,7 +829,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P0 — SQLite migration | ✅ Merged to main | `1.4.0` | 2026-04-10 |
 | P1 — Quick wins | ✅ Merged to main | `1.5.0` | 2026-04-13 |
 | P2 — Culling enhancements | ✅ Merged to main | `1.6.0` | 2026-04-16 |
-| P3 — Cache architecture | ⬜ Not started | `1.7.0` | — |
+| P3 — Cache architecture | 🔄 In progress | `1.7.0` | — |
 | P4 — Extended mode | ⬜ Not started | `2.0.0` | — |
 | P5 — Documentation | ⬜ Not started | `2.1.0` | — |
 

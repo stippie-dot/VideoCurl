@@ -42,7 +42,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
       const fullPath = path.join(currentDir, entry.name);
 
       // Skip our own cache/thumb directories
-      if (entry.isDirectory() && (entry.name === '.video-cull-thumbs' || entry.name === '.video-cull-cache.json')) {
+      if (entry.isDirectory() && (entry.name === '.video-cull-thumbs' || entry.name === '.videocull' || entry.name === '.video-cull-cache.json')) {
         continue;
       }
 

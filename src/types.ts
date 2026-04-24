@@ -58,6 +58,8 @@ export type SortField = 'name' | 'size' | 'duration' | 'date';
 export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
+export type CacheLocationMode = 'centralised' | 'per-drive' | 'distributed';
+export type AppMode = 'minimal' | 'extended';
 
 // ── Undo Entry ─────────────────────────────────────────────────────
 export interface UndoEntry {
@@ -72,6 +74,11 @@ export interface UndoEntry {
 import type { Keybind } from './keybinds';
 
 export interface AppSettings {
+  appMode: AppMode;
+  hasSeenAppModeIntro: boolean;
+  cacheLocation: CacheLocationMode;
+  centralCachePath: string | null;
+  perDriveCachePaths: Record<string, string>;
   thumbsPerVideo: 1 | 2 | 4 | 6 | 9;
   defaultCardScale: number;
   defaultSortBy: SortField;
@@ -107,12 +114,14 @@ export interface AppSettings {
   keyPreviewSeekForward: Keybind;
   // Global
   keyShowHelp: Keybind;
+  keyToggleAppMode: Keybind;
 }
 
 // ── Store State ────────────────────────────────────────────────────
 export interface VideoStore {
   // Directory
   directory: string | null;
+  directories: string[];
   includeSubfolders: boolean;
 
   // Videos
@@ -159,6 +168,8 @@ export interface VideoStore {
 
   // Actions
   setDirectory: (dir: string | null) => void;
+  addDirectory: (dir: string) => void;
+  setDirectories: (dirs: string[]) => void;
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
@@ -217,6 +228,7 @@ export interface ElectronAPI {
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
   openInExplorer: (filePath: string) => Promise<void>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
+  resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
   generateThumbnails: (videos: Video[], dirPath: string) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
@@ -234,6 +246,12 @@ export interface ElectronAPI {
   openVideo: (filePath: string) => Promise<void>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
+  validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
+  migrateCacheSettings: (
+    oldSettings: AppSettings,
+    newSettings: AppSettings,
+    loadedDirs: string[]
+  ) => Promise<{ status: 'unchanged' | 'no-cache' | 'cancelled' | 'fresh' | 'migrated' | 'partial' | 'error'; migrated: number; errors: string[] }>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<void>;
   installUpdate: () => Promise<void>;

@@ -19,6 +19,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keySpeedUp:            kb(']'),
   keyBookmark:           kb('b'),
   keyShowHelp:           kb('?'),
+  keyToggleAppMode:      kb('m', { ctrl: true, shift: true }),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
 };
@@ -62,6 +63,26 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
 
   if (result.autoUpdates === undefined || result.autoUpdates === null) {
     result.autoUpdates = true;
+  }
+
+  if (result.appMode !== 'minimal' && result.appMode !== 'extended') {
+    result.appMode = 'extended';
+  }
+
+  if (typeof result.hasSeenAppModeIntro !== 'boolean') {
+    result.hasSeenAppModeIntro = false;
+  }
+
+  if (!['centralised', 'per-drive', 'distributed'].includes(result.cacheLocation as string)) {
+    result.cacheLocation = 'centralised';
+  }
+
+  if (result.centralCachePath !== null && typeof result.centralCachePath !== 'string') {
+    result.centralCachePath = null;
+  }
+
+  if (!result.perDriveCachePaths || typeof result.perDriveCachePaths !== 'object' || Array.isArray(result.perDriveCachePaths)) {
+    result.perDriveCachePaths = {};
   }
 
   return result as Partial<AppSettings>;

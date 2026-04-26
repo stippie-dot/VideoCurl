@@ -5,65 +5,32 @@ chosen approach and relevant notes.
 
 ---
 
-## Build Strategy — Minimal vs. Extended
+## Feature Toggles
 
-**Decision:** One codebase, one binary, one installer. Users toggle between **Minimal** and
-**Extended** mode via a config flag. No separate build targets, no separate codebases.
+**Decision:** No Minimal/Extended mode split. All optional features are on by default.
+Users can disable any feature individually via a **Features** tab in Settings.
 
-### Mode Definitions
+### Implementation
 
-**Minimal is the base. Extended is everything in Minimal, plus more.**
+- `features` object added to `AppSettings`, one boolean key per optional feature.
+- All keys default to `true` — nothing is hidden from new users.
+- Optional UI elements check their feature flag before rendering. No restart needed when toggling.
+- No mode concept, no first-run popup, no mode-switching logic anywhere in the codebase.
+- Electron version is v41.3.0.
 
-| Feature | Minimal | Extended |
+### Toggleable Features
+
+| Feature | Settings key | Default |
 |---|---|---|
-| Core culling (scan, review, grid, delete) | ✅ | ✅ |
-| Bookmarks, keyboard shortcuts, settings | ✅ | ✅ |
-| Phase 1–2 features (drag & drop, flipbook, etc.) | ✅ | ✅ |
-| Multi-directory, cache architecture | ✅ | ✅ |
-| 5-star rating, favorites | — | ✅ |
-| Duplicate comparison screen | — | ✅ |
-| Analytics screen | — | ✅ |
-| Codec export report | — | ✅ |
+| 5-star rating | `features.ratings` | `true` |
+| Favorites (heart) | `features.favorites` | `true` |
+| Analytics screen | `features.analytics` | `true` |
+| Codec / resolution badges | `features.codecBadges` | `true` |
+| Incompatible codec indicator | `features.compatibilityCheck` | `true` |
+| Global mute toggle | `features.globalMute` | `true` |
+| "Next Undecided" jump | `features.nextUndecided` | `true` |
 
-### First-Run Mode Selection
-
-**Extended is the default.** No choice is forced on the user. On first launch, a one-time
-dismissible popup (toast or small modal) informs the user of their active mode:
-
-> **You're using Video Cull in Extended mode** — ratings, analytics, and more are enabled.
-> You can switch to Minimal (just culling, no extras) anytime in Settings.
-> [Switch to Minimal] [Got it]
-
-- "Switch to Minimal" applies the change immediately and dismisses the popup.
-- "Got it" dismisses the popup and stays in Extended.
-- The popup is shown exactly once and never again.
-- `appMode` defaults to `'extended'`. Users who want a cleaner experience can switch
-  to Minimal via Settings, the Electron menu, or the configurable keybind.
-
-### Switching Modes
-
-Three ways to switch after first run:
-
-1. **Settings modal** — a toggle at the top of the Settings panel with the same
-   explanation text as the first-run screen.
-2. **Electron menu bar** — `View → Switch to Minimal / Extended Mode`. Updates config and
-   reloads the relevant UI sections immediately (no full restart needed).
-3. **Configurable keyboard shortcut** — a keybind in the settings (default: (AI chooses a default keybind),
-   user-assigned). Toggles between modes with a brief toast notification confirming the
-   change.
-
-### Implementation Notes
-
-- Electron version is Electron V32.1.0 or v32.3.3
-- `appMode: 'minimal' | 'extended'` added to `AppSettings`.
-- Extended-only UI elements (rating stars, heart icon, nav items for Duplicates and
-  Analytics) are conditionally rendered based on `appMode`.
-- No code is removed in minimal mode — it is just hidden. This avoids maintaining two
-  component trees.
-- `appMode` defaults to `'extended'`. The first-run popup is shown when no prior choice
-  has been recorded in config.
-- First-run screen is a full-window overlay rendered in `App.tsx` before the normal UI,
-  similar to the privacy screen approach — no separate route or window needed.
+The **Features** tab in Settings lists each toggle with a one-line description of what it does.
 
 ---
 
@@ -498,9 +465,9 @@ Fresh / Cancel") covers both DB files and their accompanying `thumbs\` directori
 
 ---
 
-## Phase 4 — Extended Mode Additions
+## Phase 4 — Feature Additions
 
-Features only visible when Extended mode is active. Extended builds on everything in Phases 1–3.
+Optional features that build on the core culling workflow. All enabled by default; each individually toggleable via the Features tab in Settings.
 
 ### 4.1 5-Star Rating
 
@@ -621,17 +588,6 @@ in the Electron main process so it can be unit tested independently of the rende
 - Unsupported-codec report remains a separate future report track from the current
   Phase 2.7 decisions report.
   
-### Core vs Extended
-
-**Current direction:** Keep the split for now, but move codec/compatibility-oriented features
-into the core build when they are needed by the report and playback warnings.
-
-**Decision notes:**
-- Core should include the data needed for unsupported-codec reporting and playback warnings.
-- Extended should remain a temporary container for purely additive features until we decide
-  whether ratings/favorites/analytics belong in core as well.
-- Revisit the split before phase 4 implementation starts.
-
 ### 4.6 "Next Undecided" Jump Navigation
 
 **Decision:** A keyboard shortcut in review mode that jumps directly to the next video
@@ -656,6 +612,47 @@ mode. Persisted across sessions.
 - When muted, all `<video>` elements have `muted` attribute set. The mute state is also
   shown as a small persistent icon in the toolbar so users know audio is suppressed.
 
+### 4.8 Library Management Tab
+
+A **Library** tab in Settings that surfaces all known cached folders as a managed library.
+This is the first step toward the app becoming a persistent home for video collections
+rather than a folder-by-folder tool.
+
+**Display:**
+- Folders grouped by root (top-level scanned path) — not listed as individual subfolder entries.
+- Each root shows aggregate stats: total video count, total size on disk, decisions summary
+  (keep / delete / pending / skipped), last scanned date.
+- Expand a root to see its subfolder caches as a collapsible tree. Collapsed by default.
+
+**Actions per root:**
+- **Delete cache** — removes the `.db` file(s) and thumbnail files for that root. Video files are not touched.
+- **Rescan** — opens the folder directly into a new scan, bypassing the folder picker.
+- **Rewire path** — for when the folder has moved to a new location. Opens a folder picker,
+  then performs a path-prefix find-and-replace across all stored paths in the DB and renames
+  the DB file key. Shows a preview (old prefix → new prefix, N rows affected) before committing.
+
+**Implementation notes:**
+- Build the root tree from the `knownCacheFolders` registry: any stored path that is a
+  prefix of another is its parent. Paths that share no prefix become separate roots.
+- Aggregate stats via SQLite `SUM` / `COUNT` queries across all DBs under a root — not
+  from the in-memory store.
+- Rewire runs as a single `db.transaction()`. The preview step is mandatory before applying.
+  If the write fails mid-transaction, the DB is rolled back cleanly.
+
+### 4.9 About Tab in Settings
+
+A dedicated **About** tab at the end of the Settings modal.
+
+**Contents:**
+- App name and current version (injected at build time via `import.meta.env.VITE_APP_VERSION`).
+- Link to the GitHub repository (`shell.openExternal`).
+- Link to the GitHub Releases / Changelog page.
+- Two support buttons: **GitHub Sponsors** and **PayPal** (links from `.github/FUNDING.yml`).
+
+**Implementation notes:**
+- Version defined in Vite config via `define: { __APP_VERSION__: JSON.stringify(pkg.version) }`.
+- All external links use `shell.openExternal` — no in-app navigation.
+- Support buttons are secondary style — present but not prominent.
 
 ---
 
@@ -783,7 +780,7 @@ Avoid committing half-migrated states where two systems coexist but neither full
 | P1 — Quick wins | `1.5.0` | Drag & drop, privacy screen, recent dirs |
 | P2 — Culling enhancements | `1.6.0` | Duration filter, progress bar, batch select, HTML export, etc. |
 | P3 — Cache architecture | `1.7.0` | Per-drive mode, multi-directory, migration dialog |
-| P4 — Extended mode | `2.0.0` | Ratings, analytics, codec — major milestone |
+| P4 — Feature additions | `2.0.0` | Ratings, analytics, codec, library tab, feature toggles |
 | P5 — Documentation | `2.1.0` | Additive, ships with or after P4 |
 
 Version bump happens in one commit, at the moment of merging the phase branch into main.
@@ -830,7 +827,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P1 — Quick wins | ✅ Merged to main | `1.5.0` | 2026-04-13 |
 | P2 — Culling enhancements | ✅ Merged to main | `1.6.0` | 2026-04-16 |
 | P3 — Cache architecture | ✅ Merged to main | `1.7.0` | 2026-04-25 |
-| P4 — Extended mode | ⬜ Not started | `2.0.0` | — |
+| P4 — Feature additions | ⬜ Not started | `2.0.0` | — |
 | P5 — Documentation | ⬜ Not started | `2.1.0` | — |
 
 Status key: ⬜ Not started · 🔄 In progress · ✅ Merged to main
@@ -854,8 +851,7 @@ P2  Export decisions HTML (Phase 2.7)
 
 P3  Cache architecture + location setting + per-drive custom paths (Phase 3.1)
 P3  Multi-directory session support (Phase 3.1)
-P3  First-run mode banner + mode switching (Build Strategy)
-
+P4  Feature toggles infrastructure — `features` in AppSettings, Features tab in Settings
 P4  Resolution + codec + fps on Video type (Phase 4.3) ← enables 4.4 and 4.5
 P4  5-star rating (Phase 4.1)
 P4  Favorites toggle (Phase 4.2)
@@ -863,6 +859,8 @@ P4  Analytics screen (Phase 4.4)
 P4  Incompatible codec indicator + badge (Phase 4.5)
 P4  "Next Undecided" jump navigation (Phase 4.6)
 P4  Global mute toggle (Phase 4.7)
+P4  Library management tab (Phase 4.8)
+P4  About tab in Settings (Phase 4.9)
 
 P5  Documentation via shell.openExternal (Phase 5)
 ```

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { VariableSizeList } from 'react-window';
 import type { ListOnScrollProps } from 'react-window';
 import type { Video } from '../types';
@@ -34,6 +34,17 @@ interface GridModeProps {
   onReviewFolder: (folderPath: string) => void;
 }
 
+interface GridRowData {
+  rows: RowItem[];
+  columnWidth: number;
+  cardHeight: number;
+  selectedIds: Set<string>;
+  isSelectionMode: boolean;
+  handleCardClick: (video: Video, event: ReactMouseEvent) => void;
+  onReviewFolder: (folderPath: string) => void;
+  toggleSelection: (video: Video, event: ReactMouseEvent) => void;
+}
+
 /** Extract display-friendly folder name relative to root directory */
 function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
@@ -62,6 +73,66 @@ function getFolderPath(video: Video): string {
   return video.path.substring(0, video.path.lastIndexOf(sep));
 }
 
+function Row({ index, style, data }: { index: number; style: CSSProperties; data: GridRowData }) {
+  const {
+    rows,
+    columnWidth,
+    cardHeight,
+    selectedIds,
+    isSelectionMode,
+    handleCardClick,
+    onReviewFolder,
+    toggleSelection,
+  } = data;
+  const item = rows[index];
+
+  if (item.type === 'header') {
+    return (
+      <div style={style} className="grid-group-header">
+        <span className="grid-group-label">{item.label}</span>
+        <span className="grid-group-meta">
+          <span className="grid-group-count">{item.count}</span>
+          <span className="grid-group-size">{formatSize(item.totalSize)}</span>
+          <button
+            className="grid-group-review-btn"
+            onClick={() => onReviewFolder(item.folderPath)}
+            title={`Review ${item.label}`}
+          >
+            <Play size={11} />
+            Review
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={style} className="grid-card-row">
+      {item.videos.map((video, colIdx) => (
+        <div
+          key={video.id}
+          className="grid-card-cell"
+          style={{
+            width: columnWidth,
+            height: cardHeight,
+            marginLeft: colIdx === 0 ? GAP : GAP / 2,
+            marginRight: colIdx === item.videos.length - 1 ? GAP : GAP / 2,
+            paddingTop: GAP / 2,
+          }}
+        >
+          <VideoCard
+            video={video}
+            isSelected={selectedIds.has(video.id)}
+            showSelectionControls={isSelectionMode}
+            onClick={handleCardClick}
+            onToggleSelect={toggleSelection}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function GridMode({ onReviewFolder }: GridModeProps) {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const setReviewMode = useStore((s) => s.setReviewMode);
@@ -78,6 +149,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const directories = useStore((s) => s.directories);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<VariableSizeList>(null);
+  const rowsRef = useRef<RowItem[]>([]);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const isSelectionMode = selectedIds.size > 0;
 
@@ -168,6 +240,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     return { rows: result, rowStructureKey: structureKey };
   }, [filteredVideos, columnCount, groupByFolder, directories]);
 
+  rowsRef.current = rows;
+
   useEffect(() => {
     if (selectedIds.size > 0) {
       const next = new Set(Array.from(selectedIds).filter((id) => filteredVideos.some((video) => video.id === id)));
@@ -198,8 +272,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   }, [columnCount, cardScale, groupByFolder, rowStructureKey]);
 
   const getItemSize = useCallback(
-    (index: number) => rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
-    [rows, cardHeight]
+    (index: number) => rowsRef.current[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
+    [cardHeight]
   );
 
   const getLastSelectedInList = useCallback((ids: Set<string>): string | null => {
@@ -274,7 +348,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     setGridSelectionAnchorId(targetId);
   }, [filteredVideos, getLastSelectedInList, getRangeAnchorId, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
 
-  const toggleSelection = useCallback((video: Video, event: React.MouseEvent) => {
+  const toggleSelection = useCallback((video: Video, event: ReactMouseEvent) => {
     if (event.shiftKey) {
       applyRangeSelection(video.id);
       return;
@@ -297,7 +371,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     setGridSelectionAnchorId(nextAnchorId);
   }, [applyRangeSelection, getLastSelectedInList, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
 
-  const handleCardClick = useCallback((video: Video, event: React.MouseEvent) => {
+  const handleCardClick = useCallback((video: Video, event: ReactMouseEvent) => {
     if (isSelectionMode || event.shiftKey) {
       toggleSelection(video, event);
       return;
@@ -329,55 +403,16 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     persistedGridScroll = { directory, offset: scrollOffset };
   }, [directory]);
 
-  const Row = useCallback(({ index, style, data }: { index: number; style: React.CSSProperties; data: RowItem[] }) => {
-    const item = data[index];
-
-    if (item.type === 'header') {
-      return (
-        <div style={style} className="grid-group-header">
-          <span className="grid-group-label">{item.label}</span>
-          <span className="grid-group-meta">
-            <span className="grid-group-count">{item.count}</span>
-            <span className="grid-group-size">{formatSize(item.totalSize)}</span>
-            <button
-              className="grid-group-review-btn"
-              onClick={() => onReviewFolder(item.folderPath)}
-              title={`Review ${item.label}`}
-            >
-              <Play size={11} />
-              Review
-            </button>
-          </span>
-        </div>
-      );
-    }
-
-    return (
-      <div style={style} className="grid-card-row">
-        {item.videos.map((video, colIdx) => (
-          <div
-            key={video.id}
-            className="grid-card-cell"
-            style={{
-              width: columnWidth,
-              height: cardHeight,
-              marginLeft: colIdx === 0 ? GAP : GAP / 2,
-              marginRight: colIdx === item.videos.length - 1 ? GAP : GAP / 2,
-              paddingTop: GAP / 2,
-            }}
-          >
-            <VideoCard
-              video={video}
-              isSelected={selectedIds.has(video.id)}
-              showSelectionControls={isSelectionMode}
-              onClick={handleCardClick}
-              onToggleSelect={toggleSelection}
-            />
-          </div>
-        ))}
-      </div>
-    );
-  }, [columnWidth, cardHeight, handleCardClick, isSelectionMode, onReviewFolder, selectedIds, toggleSelection]);
+  const itemData = useMemo<GridRowData>(() => ({
+    rows,
+    columnWidth,
+    cardHeight,
+    selectedIds,
+    isSelectionMode,
+    handleCardClick,
+    onReviewFolder,
+    toggleSelection,
+  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, onReviewFolder, toggleSelection]);
 
   return (
     <div className="grid-mode" ref={containerRef}>
@@ -392,7 +427,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
           width={dimensions.width}
           initialScrollOffset={initialScrollOffset}
           itemCount={rows.length}
-          itemData={rows}
+          itemData={itemData}
           itemSize={getItemSize}
           overscanCount={2}
           onScroll={handleScroll}

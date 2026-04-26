@@ -1,5 +1,5 @@
 import useStore from '../store';
-import { FolderOpen, Film, Settings } from 'lucide-react';
+import { FolderOpen, Film, Settings, X } from 'lucide-react';
 import { formatKeybind } from '../keybinds';
 import { formatRelativeTime, formatRecentPath } from '../utils';
 import './EmptyState.css';
@@ -38,6 +38,11 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
       return;
     }
     setDirectory(dir);
+  };
+
+  const handleRemoveRecent = (dir: string) => {
+    removeRecentDirectory(dir);
+    onNotify('Removed recent folder.', 'info');
   };
 
   return (
@@ -83,7 +88,7 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
           </div>
           <ul className="empty-recents-list">
             {recentDirectories.slice(0, 5).map((dir) => (
-              <li key={dir}>
+              <li key={dir} className="empty-recent-row">
                 <button
                   className="empty-recent-item"
                   title={`${dir} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[dir])}`}
@@ -91,6 +96,14 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
                 >
                   <span className="empty-recent-main">{formatRecentPath(dir)}</span>
                   <span className="empty-recent-meta">{formatRelativeTime(recentDirectoryTimestamps[dir])}</span>
+                </button>
+                <button
+                  className="empty-recent-remove"
+                  title={`Remove ${formatRecentPath(dir)} from recent folders`}
+                  aria-label={`Remove ${formatRecentPath(dir)} from recent folders`}
+                  onClick={() => handleRemoveRecent(dir)}
+                >
+                  <X size={12} />
                 </button>
               </li>
             ))}

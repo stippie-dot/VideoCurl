@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearCache: (dirPath) => ipcRenderer.invoke('clear-cache', dirPath),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  getAutoConcurrency: () => ipcRenderer.invoke('get-auto-concurrency'),
   validateCacheLocation: (dirPath, expectedDriveKey) => ipcRenderer.invoke('validate-cache-location', dirPath, expectedDriveKey),
   confirmDistributedMode: () => ipcRenderer.invoke('confirm-distributed-mode'),
   migrateCacheSettings: (oldSettings, newSettings, loadedDirs) =>

@@ -4,7 +4,7 @@ const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
 const os = require('os');
 const { scanDirectory } = require('./scanner');
-const { processVideos, cancelProcessing } = require('./processor');
+const { processVideos, cancelProcessing, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
@@ -488,9 +488,13 @@ function cacheRelevantSettingsChanged(oldSettings = {}, newSettings = {}) {
 }
 
 function isFolderInsideSync(childFolder, parentFolder) {
-  const child = path.resolve(childFolder);
-  const parent = path.resolve(parentFolder);
+  const child = path.resolve(childFolder).toLowerCase();
+  const parent = path.resolve(parentFolder).toLowerCase();
   return child !== parent && child.startsWith(parent + path.sep);
+}
+
+function isSameFolderSync(a, b) {
+  return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 }
 
 function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
@@ -499,6 +503,80 @@ function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
     cached.thumbnails = cached.thumbnails.map((thumb) => thumbAbsolute(thumb, cacheRootDir));
   }
   return map;
+}
+
+function getVideoFolderPath(video) {
+  return path.dirname(video.path);
+}
+
+function groupVideosByFolder(videos) {
+  const groups = new Map();
+  for (const video of videos) {
+    if (!video?.path) continue;
+    const folderPath = getVideoFolderPath(video);
+    const group = groups.get(folderPath) ?? [];
+    group.push(video);
+    groups.set(folderPath, group);
+  }
+  return groups;
+}
+
+async function prepareCacheFolder(folderPath, cacheOptions) {
+  const cachePaths = getCachePaths(folderPath, cacheOptions);
+  activeCacheRoots.add(cachePaths.cacheRootDir);
+  await registerCacheFolder(folderPath, cachePaths);
+  await fs.mkdir(cachePaths.thumbRootDir, { recursive: true });
+  return cachePaths;
+}
+
+async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false } = {}) {
+  const groups = groupVideosByFolder(videos);
+  for (const [folderPath, folderVideos] of groups) {
+    const cachePaths = await prepareCacheFolder(folderPath, cacheOptions);
+    const db = cache.openDb(folderPath, cacheOptions);
+    const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
+    if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
+      cache.saveCache(db, payload);
+    } else {
+      await cache.saveCacheChunked(db, payload);
+    }
+  }
+}
+
+async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentCacheRootDir) {
+  const cachedVideos = cache.loadCacheVideos(parentDb);
+  const byTargetFolder = new Map();
+
+  for (const cached of cachedVideos) {
+    if (!cached.path) continue;
+    const targetFolder = getVideoFolderPath(cached);
+    if (isSameFolderSync(targetFolder, parentFolder)) continue;
+    try {
+      const stats = await fs.stat(targetFolder);
+      if (!stats.isDirectory()) continue;
+    } catch {
+      continue;
+    }
+
+    const absoluteThumbs = cached.thumbnails.map((thumb) => thumbAbsolute(thumb, parentCacheRootDir));
+    const video = { ...cached, thumbnails: absoluteThumbs };
+    const group = byTargetFolder.get(targetFolder) ?? [];
+    group.push(video);
+    byTargetFolder.set(targetFolder, group);
+  }
+
+  if (byTargetFolder.size === 0) return;
+
+  let movedCount = 0;
+  for (const [targetFolder, videos] of byTargetFolder) {
+    const targetPaths = await prepareCacheFolder(targetFolder, cacheOptions);
+    const targetDb = cache.openDb(targetFolder, cacheOptions);
+    cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
+    cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
+    movedCount += videos.length;
+  }
+
+  log.info(`[cache] Split ${movedCount} descendant cached video rows out of ${parentFolder}`);
 }
 
 // â”€â”€ Thumbnail path helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -770,20 +848,32 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   currentScanDirs.add(dirPath);
 
   const cacheOptions = await getCacheOptions();
-  const cachePaths = getCachePaths(dirPath, cacheOptions);
-  activeCacheRoots.add(cachePaths.cacheRootDir);
-  await registerCacheFolder(dirPath, cachePaths);
+  const cachePaths = await prepareCacheFolder(dirPath, cacheOptions);
 
   // Open SQLite DB for this directory (creates schema if first time)
   const db = cache.openDb(dirPath, cacheOptions);
 
   // Import old JSON cache if present (first launch after update)
   await cache.migrateJsonIfNeeded(dirPath, db);
+  await splitDescendantRowsFromParentDb(dirPath, db, cacheOptions, cachePaths.cacheRootDir);
+
+  let knownCacheFolders = await getKnownCacheFolders();
+  const parentCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(dirPath, folderPath));
+  for (const parentFolder of parentCacheFolders) {
+    try {
+      const parentPaths = getCachePaths(parentFolder, cacheOptions);
+      activeCacheRoots.add(parentPaths.cacheRootDir);
+      const parentDb = cache.openDb(parentFolder, cacheOptions);
+      await splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentPaths.cacheRootDir);
+    } catch (err) {
+      log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
+    }
+  }
 
   // Load existing cache entries for merging. Known subfolder caches are folded in
   // so opening a parent preserves decisions made when a child folder was opened alone.
   const cachedMap = loadCacheMapWithAbsoluteThumbs(db, cachePaths.cacheRootDir);
-  const knownCacheFolders = await getKnownCacheFolders();
+  knownCacheFolders = await getKnownCacheFolders();
   const childCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath));
   for (const childFolder of childCacheFolders) {
     try {
@@ -799,10 +889,6 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     }
   }
 
-  // Ensure the new thumbnail cache directory exists
-  const newThumbRoot = cachePaths.thumbRootDir;
-  await fs.mkdir(newThumbRoot, { recursive: true });
-
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when
   // the DB has no thumbnail records (e.g. first launch after JSONâ†’SQLite migration).
@@ -810,6 +896,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
   const oldVideoIds = await fs.readdir(oldThumbBase).catch(() => []);
   if (oldVideoIds.length > 0) {
+    const newThumbRoot = cachePaths.thumbRootDir;
     log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} â†’ ${newThumbRoot}`);
     const BATCH = 10;
     for (let i = 0; i < oldVideoIds.length; i += BATCH) {
@@ -858,9 +945,8 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     return { ...v, status: 'pending', thumbnails: [], metadataDate: null, bookmarks: [] };
   });
 
-  // Persist merged result with relative thumbnail paths so the DB is portable.
-  const saveDb = cache.openDb(dirPath, cacheOptions);
-  await cache.saveCacheChunked(saveDb, merged.map((video) => videoForDb(video, cachePaths.cacheRootDir)));
+  // Persist each video to the cache owned by its immediate parent folder.
+  await saveVideosByParentFolder(merged, cacheOptions);
 
   // Populate the known-paths whitelist for this loaded session
   merged.forEach((v) => knownVideoPaths.add(v.path));
@@ -895,13 +981,15 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
     return true;
   });
 
-  // Thumbnails are written to the cache directory, not the video folder
+  // Thumbnails are written to each video's owning cache directory, not the scan root.
   const cacheOptions = await getCacheOptions();
-  const cachePaths = getCachePaths(dirPath, cacheOptions);
-  activeCacheRoots.add(cachePaths.cacheRootDir);
-  await registerCacheFolder(dirPath, cachePaths);
-  const thumbDir = cachePaths.thumbRootDir;
-  await fs.mkdir(thumbDir, { recursive: true });
+  const thumbRootByFolder = new Map();
+  for (const video of safeVideos) {
+    const videoFolder = getVideoFolderPath(video);
+    if (thumbRootByFolder.has(videoFolder)) continue;
+    const videoCachePaths = await prepareCacheFolder(videoFolder, cacheOptions);
+    thumbRootByFolder.set(videoFolder, videoCachePaths.thumbRootDir);
+  }
 
   let config = {};
   try {
@@ -930,7 +1018,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
 
   const batchInterval = setInterval(flushBatch, 1000);
 
-  await processVideos(needThumbs, thumbDir, config, (progress) => {
+  await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
     lastProgress = progress;
   }, (videoId, thumbnails, durationSecs, creationTime) => {
     readyBatch.push({ videoId, thumbnails, durationSecs, metadataDate: creationTime });
@@ -953,11 +1041,7 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
     const cacheOptions = await getCacheOptions();
-    const cachePaths = getCachePaths(dirPath, cacheOptions);
-    activeCacheRoots.add(cachePaths.cacheRootDir);
-    await registerCacheFolder(dirPath, cachePaths);
-    const db = cache.openDb(dirPath, cacheOptions);
-    await cache.saveCacheChunked(db, videos.map((video) => videoForDb(video, cachePaths.cacheRootDir)));
+    await saveVideosByParentFolder(videos, cacheOptions);
     return true;
   } catch (err) {
     log.error('[save-cache] Error saving cache:', err);
@@ -969,17 +1053,10 @@ ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
     const cacheOptions = await getCacheOptions();
-    const cachePaths = getCachePaths(dirPath, cacheOptions);
-    activeCacheRoots.add(cachePaths.cacheRootDir);
-    await registerCacheFolder(dirPath, cachePaths);
-    const db = cache.openDb(dirPath, cacheOptions);
-    const payload = videos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
-    if (payload.length > ATOMIC_SAVE_SYNC_LIMIT) {
-      log.warn(`[save-cache-atomic] ${payload.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
-      await cache.saveCacheChunked(db, payload);
-    } else {
-      cache.saveCache(db, payload);
+    if (videos.length > ATOMIC_SAVE_SYNC_LIMIT) {
+      log.warn(`[save-cache-atomic] ${videos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
     }
+    await saveVideosByParentFolder(videos, cacheOptions, { atomic: true });
     return true;
   } catch (err) {
     log.error('[save-cache-atomic] Error saving cache:', err);
@@ -1000,14 +1077,18 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 
   cancelProcessing();
 
-  // Collect video IDs before deleting the DB so we know which thumb dirs to remove
   const cacheOptions = await getCacheOptions();
-  const cachePaths = getCachePaths(dirPath, cacheOptions);
-  cache.deleteDb(dirPath, cacheOptions);
-
+  const knownCacheFolders = await getKnownCacheFolders();
+  const cacheFoldersToClear = Array.from(new Set([
+    dirPath,
+    ...knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath)),
+  ]));
   try {
-    // Delete the entire per-folder thumb directory in one shot
-    await fs.rm(cachePaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+    for (const folderPath of cacheFoldersToClear) {
+      const cachePaths = getCachePaths(folderPath, cacheOptions);
+      cache.deleteDb(folderPath, cacheOptions);
+      await fs.rm(cachePaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+    }
 
     // Also clean up any legacy .video-cull-thumbs in the video folder
     const legacyThumbDir = path.join(dirPath, THUMB_DIR);
@@ -1126,6 +1207,10 @@ ipcMain.handle('validate-cache-location', async (_event, dirPath, expectedDriveK
     return { ok: false, error: `Pick a folder on ${expectedDriveKey}.` };
   }
   return testWritableDirectory(dirPath);
+});
+
+ipcMain.handle('get-auto-concurrency', async () => {
+  return getConcurrentLimit({ maxConcurrent: 'auto' });
 });
 
 

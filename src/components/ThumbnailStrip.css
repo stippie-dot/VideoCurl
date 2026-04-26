@@ -16,8 +16,13 @@
   height: 100%;
   object-fit: contain;
   display: block;
-  transition: transform 200ms ease;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 200ms ease;
   background: #0a0a12;
+}
+
+.thumb-img-loaded {
+  opacity: 1;
 }
 
 .thumb-img:hover {

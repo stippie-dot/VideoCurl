@@ -35,12 +35,16 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
+  const [autoConcurrency, setAutoConcurrency] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setLocalSettings(useStore.getState().settings);
     if (window.electronAPI?.getAppVersion) {
       window.electronAPI.getAppVersion().then(setAppVersion);
+    }
+    if (window.electronAPI?.getAutoConcurrency) {
+      window.electronAPI.getAutoConcurrency().then(setAutoConcurrency).catch(() => setAutoConcurrency(null));
     }
     setExportMessage('');
     setCacheMessage('');
@@ -330,14 +334,22 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent}
                     onChange={(e) => handleChange('maxConcurrent', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
                   >
-                    <option value="auto">Auto (Dynamically detect logical CPUs)</option>
-                    <option value={1}>1 Thread (Slower, stable)</option>
-                    <option value={2}>2 Threads</option>
-                    <option value={3}>3 Threads</option>
-                    <option value={4}>4 Threads</option>
-                    <option value={8}>8 Threads</option>
+                    <option value="auto">
+                      {autoConcurrency
+                        ? `Auto (CPU + RAM aware, ${autoConcurrency} process${autoConcurrency === 1 ? '' : 'es'})`
+                        : 'Auto (CPU + RAM aware)'}
+                    </option>
+                    <option value={1}>1 Process (Slower, stable)</option>
+                    <option value={2}>2 Processes</option>
+                    <option value={3}>3 Processes</option>
+                    <option value={4}>4 Processes</option>
+                    <option value={8}>8 Processes</option>
                   </select>
-                  <span className="help-text">Controls how many FFmpeg processes spawn simultaneously when generating thumbnails.</span>
+                  <span className="help-text">
+                    {localSettings.maxConcurrent === 'auto' && autoConcurrency
+                      ? `This system will use ${autoConcurrency} concurrent FFmpeg process${autoConcurrency === 1 ? '' : 'es'} in Auto mode.`
+                      : 'Controls how many FFmpeg processes spawn simultaneously when generating thumbnails.'}
+                  </span>
                 </div>
 
                 <div className="form-group checkbox-group">
@@ -345,7 +357,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <input type="checkbox" checked={localSettings.cpuThreadsLimited} onChange={(e) => handleChange('cpuThreadsLimited', e.target.checked)} />
                     Force single FFmpeg thread per file (Recommended)
                   </label>
-                  <span className="help-text indent">Prevents FFmpeg from gobbling 100% CPU on tiny thumbnails during parallel execution.</span>
+                  <span className="help-text">Prevents FFmpeg from gobbling 100% CPU on tiny thumbnails during parallel execution.</span>
                 </div>
 
                 <div className="form-group checkbox-group">
@@ -353,7 +365,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <input type="checkbox" checked={localSettings.hardwareAccel} onChange={(e) => handleChange('hardwareAccel', e.target.checked)} />
                     Enable Hardware Acceleration (Beta)
                   </label>
-                  <span className="help-text indent">Attempts to route decoding through the GPU instead of CPU. May crash on legacy formats.</span>
+                  <span className="help-text">Attempts to route decoding through the GPU instead of CPU. May crash on legacy formats.</span>
                 </div>
               </div>
             )}
@@ -466,7 +478,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       />
                       Automatically check for updates on startup
                     </label>
-                    <span className="help-text indent">When enabled, updates download silently in the background. You are always notified before anything installs.</span>
+                    <span className="help-text">When enabled, updates download silently in the background. You are always notified before anything installs.</span>
                   </div>
                 </div>
               );

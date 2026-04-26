@@ -246,6 +246,7 @@ export interface ElectronAPI {
   openVideo: (filePath: string) => Promise<void>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
+  getAutoConcurrency: () => Promise<number>;
   validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
   migrateCacheSettings: (
     oldSettings: AppSettings,

@@ -187,8 +187,15 @@
   gap: 3px;
 }
 
+.empty-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .empty-recent-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -206,6 +213,25 @@
 
 .empty-recent-item:hover {
   color: var(--text-primary);
+}
+
+.empty-recent-remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.empty-recent-remove:hover {
+  color: var(--color-delete);
+  border-color: rgba(255, 92, 108, 0.35);
+  background: var(--color-delete-dim);
 }
 
 .empty-recent-main {

@@ -190,7 +190,7 @@ function closeDb() {
  * Load all cached videos from the DB as a Map<id, cachedVideo>.
  * Returns an empty Map if the DB has no rows yet.
  */
-function loadCacheMap(db) {
+function loadCacheVideos(db) {
   const rows = db.prepare('SELECT * FROM videos').all();
   const thumbRows = db.prepare(
     'SELECT video_id, file_path FROM thumbnails ORDER BY video_id, idx'
@@ -212,6 +212,10 @@ function loadCacheMap(db) {
     if (row.status && row.status !== 'pending') nonPending++;
     map.set(row.id, {
       id: row.id,
+      filename: row.filename,
+      path: row.path,
+      sizeBytes: row.size_bytes ?? 0,
+      date: row.file_date ?? null,
       status: row.status || 'pending',
       durationSecs: row.duration_secs ?? null,
       fps: row.fps ?? null,
@@ -230,6 +234,15 @@ function loadCacheMap(db) {
     });
   }
   log.info(`[cache] loadCacheMap: ${rows.length} videos, ${withThumbs} with thumbs, ${nonPending} non-pending`);
+  return Array.from(map.values());
+}
+
+function loadCacheMap(db) {
+  const videos = loadCacheVideos(db);
+  const map = new Map();
+  for (const video of videos) {
+    map.set(video.id, video);
+  }
   return map;
 }
 
@@ -371,6 +384,20 @@ async function saveCacheChunked(db, videos, onProgress) {
   }
 }
 
+function deleteVideosByIds(db, videoIds) {
+  if (!videoIds.length) return;
+
+  const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
+  const deleteVideo = db.prepare('DELETE FROM videos WHERE id = ?');
+  const deleteAll = db.transaction((ids) => {
+    for (const id of ids) {
+      deleteThumbs.run(id);
+      deleteVideo.run(id);
+    }
+  });
+  deleteAll(videoIds);
+}
+
 // ── JSON migration ────────────────────────────────────────────────────────
 
 /**
@@ -469,9 +496,11 @@ module.exports = {
   resolveCachePath,
   openDb,
   closeDb,
+  loadCacheVideos,
   loadCacheMap,
   saveCache,
   saveCacheChunked,
+  deleteVideosByIds,
   migrateJsonIfNeeded,
   deleteDb,
 };

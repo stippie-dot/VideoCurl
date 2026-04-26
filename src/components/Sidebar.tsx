@@ -13,9 +13,10 @@ interface SidebarProps {
   onDirectoryPicked: (path: string) => void;
   onNotify: (message: string, kind?: 'info' | 'error') => void;
   onOpenSettings: () => void;
+  onCloseSession: () => void;
 }
 
-export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenSettings }: SidebarProps) {
+export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenSettings, onCloseSession }: SidebarProps) {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
   const setDirectory = useStore((s) => s.setDirectory);
@@ -55,6 +56,9 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showRecents, setShowRecents] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
+  const [showSort, setShowSort] = useState(true);
+  const [showView, setShowView] = useState(true);
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
@@ -76,6 +80,11 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
     }
     onDirectoryPicked(dir);
     setShowRecents(false);
+  };
+
+  const handleRemoveRecent = (dir: string) => {
+    removeRecentDirectory(dir);
+    onNotify('Removed recent folder.', 'info');
   };
 
 
@@ -137,6 +146,10 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
     return `${mins}:${String(secs).padStart(2, '0')}`;
   };
 
+  const reviewLabel = filteredVideos.length === videos.length
+    ? `Review ${filteredVideos.length} ${filteredVideos.length === 1 ? 'video' : 'videos'}`
+    : `Review ${filteredVideos.length} filtered`;
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -146,72 +159,95 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
         </h1>
       </div>
 
-      <section className="sidebar-section">
-        <button className="btn btn-primary" onClick={handleSelectDir}>
-          <FolderOpen size={16} />
-          Change Folder
-        </button>
-
-        <div className="directory-info">
-          <HardDrive size={14} />
-          <span className="directory-path" title={directories.join('\n') || directory || undefined}>
-            {directories.length > 1 ? `${directories.length} folders loaded` : directory}
-          </span>
-          {recentDirectories.length > 1 && (
-            <button
-              className="btn-recents-toggle"
-              title="Recent folders"
-              aria-expanded={showRecents}
-              aria-controls="sidebar-recents-list"
-              onClick={() => setShowRecents((v) => !v)}
-            >
-              <ChevronDown size={14} style={{ transform: showRecents ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
-            </button>
-          )}
+      <section className="sidebar-section sidebar-session-section">
+        <div className="session-card">
+          <div className="session-card-main">
+            <HardDrive size={14} />
+            <div className="session-card-copy">
+              <span className="session-label">Current folder</span>
+              <span className="session-path" title={directories.join('\n') || directory || undefined}>
+                {directories.length > 1 ? `${directories.length} folders loaded` : directory}
+              </span>
+              <label className="session-subfolders-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeSubfolders}
+                  onChange={(e) => setIncludeSubfolders(e.target.checked)}
+                />
+                <span className="session-subfolders-box" />
+                <span>Include subfolders</span>
+              </label>
+            </div>
+          </div>
         </div>
-        {showRecents && recentDirectories.length > 1 && (
-          <>
-          <ul className="recents-list" id="sidebar-recents-list">
-            {recentDirectories.slice(0, 5).map((d) => (
-              <li key={d}>
-                <button
-                  className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
-                  title={`${d} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}
-                  disabled={d === directory}
-                  onClick={() => void handleOpenRecent(d)}
-                >
-                  <FolderOpen size={12} />
-                  {formatRecentPath(d)}
-                </button>
-              </li>
-            ))}
-          </ul>
+
+        {recentDirectories.length > 1 && (
           <button
-            className="btn btn-ghost recents-clear-btn"
-            onClick={() => {
-              clearRecentDirectories();
-              setShowRecents(false);
-              onNotify('Cleared recent folders.', 'info');
-            }}
+            className="recents-header-btn"
+            title="Show recent folders"
+            aria-expanded={showRecents}
+            aria-controls="sidebar-recents-list"
+            onClick={() => setShowRecents((v) => !v)}
           >
-            Clear all
+            <span>Recent folders</span>
+            <ChevronDown size={14} className={showRecents ? 'chevron-open' : ''} />
           </button>
-          </>
         )}
 
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={includeSubfolders}
-            onChange={(e) => setIncludeSubfolders(e.target.checked)}
-          />
-          Include subfolders
-        </label>
+        {showRecents && recentDirectories.length > 1 && (
+          <div className="recents-panel">
+            <ul className="recents-list" id="sidebar-recents-list">
+              {recentDirectories.slice(0, 5).map((d) => (
+                <li key={d} className="recents-row">
+                  <button
+                    className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
+                    title={`${d} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}
+                    disabled={d === directory}
+                    onClick={() => void handleOpenRecent(d)}
+                  >
+                    <FolderOpen size={12} />
+                    <span className="recents-item-copy">
+                      <span className="recents-item-path">{formatRecentPath(d)}</span>
+                      <span className="recents-item-meta">{formatRelativeTime(recentDirectoryTimestamps[d])}</span>
+                    </span>
+                  </button>
+                  <button
+                    className="recents-remove-btn"
+                    title={`Remove ${formatRecentPath(d)} from recent folders`}
+                    aria-label={`Remove ${formatRecentPath(d)} from recent folders`}
+                    onClick={() => handleRemoveRecent(d)}
+                  >
+                    <X size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              className="recents-clear-btn"
+              onClick={() => {
+                clearRecentDirectories();
+                setShowRecents(false);
+                onNotify('Cleared recent folders.', 'info');
+              }}
+            >
+              Clear all recent folders
+            </button>
+          </div>
+        )}
 
-        <button className="btn btn-ghost" onClick={onRescan} disabled={isScanning}>
-          <RefreshCw size={14} className={isScanning ? 'spin' : ''} />
-          Rescan
-        </button>
+        <div className="session-action-row">
+          <button className="btn btn-primary session-action-btn" onClick={handleSelectDir}>
+            Change
+          </button>
+
+          <button className="btn btn-outline session-action-btn" onClick={onRescan} disabled={isScanning}>
+            Rescan
+          </button>
+
+          <button className="btn btn-outline btn-close-session session-action-btn" onClick={onCloseSession}>
+            Close
+          </button>
+        </div>
       </section>
 
       {(isScanning || isGenerating) && (
@@ -243,7 +279,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
         <section className="sidebar-section">
           <h3 className="sidebar-section-title">Statistics</h3>
           <div className="stat-grid">
-            <div className="stat-item">
+            <div className="stat-item stat-total">
               <span className="stat-value">{stats.total}</span>
               <span className="stat-label">Total</span>
             </div>
@@ -274,92 +310,130 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
       )}
 
       {stats.total > 0 && (
-        <section className="sidebar-section">
-          <h3 className="sidebar-section-title">
-            <Filter size={14} /> Filters
-          </h3>
+        <section className="sidebar-section sidebar-collapsible-section">
+          <button className="sidebar-section-toggle" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
+            <span className="sidebar-section-title">
+              <Filter size={14} /> Filters
+            </span>
+            <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
+          </button>
 
-          <div className="filter-pills">
-            {filterOptions.map((f) => (
-              <button
-                key={f.key}
-                className={`pill ${statusFilter === f.key ? 'pill-active' : ''} ${f.key !== 'all' ? `pill-${f.key}` : ''}`}
-                onClick={() => setStatusFilter(f.key)}
-              >
-                {f.icon}{f.label}
-              </button>
-            ))}
-          </div>
+          {showFilters && (
+            <div className="sidebar-section-content">
+              <div className="filter-pills">
+                {filterOptions.map((f) => (
+                  <button
+                    key={f.key}
+                    className={`pill ${statusFilter === f.key ? 'pill-active' : ''} ${f.key !== 'all' ? `pill-${f.key}` : ''}`}
+                    onClick={() => setStatusFilter(f.key)}
+                  >
+                    {f.icon}{f.label}
+                  </button>
+                ))}
+              </div>
 
-          <select
-            className="sidebar-select"
-            value={minSizeFilter}
-            onChange={(e) => setMinSizeFilter(Number(e.target.value))}
-          >
-            {minSizeOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+              <div className="filter-field">
+                <label className="filter-input-label" htmlFor="size-filter">File size</label>
+                <select
+                  id="size-filter"
+                  className="sidebar-select"
+                  value={minSizeFilter}
+                  onChange={(e) => setMinSizeFilter(Number(e.target.value))}
+                >
+                  {minSizeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="filter-input-group">
-            <label className="filter-input-label" htmlFor="min-duration-filter">Minimum duration (seconds)</label>
-            <input
-              id="min-duration-filter"
-              className="sidebar-number-input"
-              type="number"
-              min={0}
-              step={1}
-              value={minDurationFilter}
-              onChange={(e) => {
-                const raw = Number(e.target.value);
-                const safeValue = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
-                setMinDurationFilter(safeValue);
-              }}
-            />
-            <span className="filter-input-help">Equivalent: {formatDurationInput(minDurationFilter)} (m:ss)</span>
-          </div>
+              <div className="filter-field">
+                <label className="filter-input-label" htmlFor="min-duration-filter">Minimum duration</label>
+                <input
+                  id="min-duration-filter"
+                  className="sidebar-number-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={minDurationFilter}
+                  onChange={(e) => {
+                    const raw = Number(e.target.value);
+                    const safeValue = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
+                    setMinDurationFilter(safeValue);
+                  }}
+                />
+                <span className="filter-input-help">Seconds, equivalent: {formatDurationInput(minDurationFilter)}</span>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
       {stats.total > 0 && (
-        <section className="sidebar-section">
-          <h3 className="sidebar-section-title">
-            <ArrowUpDown size={14} /> Sort
-          </h3>
-
-          <button
-            className={`btn btn-toggle ${groupByFolder ? 'btn-toggle-active' : ''}`}
-            onClick={() => setGroupByFolder(!groupByFolder)}
-            title="Group videos by subfolder"
-          >
-            <FolderOpen size={14} />
-            Group by folder
+        <section className="sidebar-section sidebar-collapsible-section">
+          <button className="sidebar-section-toggle" onClick={() => setShowSort((v) => !v)} aria-expanded={showSort}>
+            <span className="sidebar-section-title">
+              <ArrowUpDown size={14} /> Sort
+            </span>
+            <ChevronDown size={14} className={showSort ? 'chevron-open' : ''} />
           </button>
 
-          {groupByFolder ? (
-            <div className="sort-nested-options">
-              <div className="sort-group">
-                <span className="sort-label">Folder order</span>
-                <div className="sort-row">
-                  <select
-                    className="sidebar-select"
-                    value={folderSortBy}
-                    onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
-                  >
-                    <option value="name">Name</option>
-                    <option value="size">Size</option>
-                  </select>
-                  <button
-                    className="btn btn-icon"
-                    onClick={() => setFolderSortOrder(folderSortOrder === 'asc' ? 'desc' : 'asc')}
-                    title={folderSortOrder === 'asc' ? 'Ascending' : 'Descending'}
-                  >
-                    <ArrowUpDown size={14} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
-                  </button>
+          {showSort && (
+            <div className="sidebar-section-content">
+              <button
+                className={`btn btn-toggle ${groupByFolder ? 'btn-toggle-active' : ''}`}
+                onClick={() => setGroupByFolder(!groupByFolder)}
+                title="Group videos by subfolder"
+              >
+                <FolderOpen size={14} />
+                Group by folder
+              </button>
+
+              {groupByFolder ? (
+                <div className="sort-nested-options">
+                  <div className="sort-group">
+                    <span className="sort-label">Folder order</span>
+                    <div className="sort-row">
+                      <select
+                        className="sidebar-select"
+                        value={folderSortBy}
+                        onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
+                      >
+                        <option value="name">Name</option>
+                        <option value="size">Size</option>
+                      </select>
+                      <button
+                        className="btn btn-icon"
+                        onClick={() => setFolderSortOrder(folderSortOrder === 'asc' ? 'desc' : 'asc')}
+                        title={folderSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                      >
+                        <ArrowUpDown size={14} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="sort-group">
+                    <span className="sort-label">Within folder</span>
+                    <div className="sort-row">
+                      <select
+                        className="sidebar-select"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
+                      >
+                        <option value="name">Name</option>
+                        <option value="size">Size</option>
+                        <option value="duration">Duration</option>
+                        <option value="date">Date</option>
+                      </select>
+                      <button
+                        className="btn btn-icon"
+                        onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                        title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                      >
+                        <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="sort-group">
-                <span className="sort-label">Within folder</span>
+              ) : (
                 <div className="sort-row">
                   <select
                     className="sidebar-select"
@@ -379,49 +453,38 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
                     <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
                   </button>
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="sort-row">
-              <select
-                className="sidebar-select"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
-              >
-                <option value="name">Name</option>
-                <option value="size">Size</option>
-                <option value="duration">Duration</option>
-                <option value="date">Date</option>
-              </select>
-              <button
-                className="btn btn-icon"
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-              >
-                <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
-              </button>
+              )}
             </div>
           )}
         </section>
       )}
 
       {stats.total > 0 && (
-        <section className="sidebar-section">
-          <h3 className="sidebar-section-title">
-            <Maximize2 size={14} /> Card Size
-          </h3>
-          <div className="slider-row">
-            <input
-              type="range"
-              className="sidebar-slider"
-              min={0.6}
-              max={2}
-              step={0.1}
-              value={cardScale}
-              onChange={(e) => setCardScale(Number(e.target.value))}
-            />
-            <span className="slider-value">{Math.round(cardScale * 100)}%</span>
-          </div>
+        <section className="sidebar-section sidebar-collapsible-section">
+          <button className="sidebar-section-toggle" onClick={() => setShowView((v) => !v)} aria-expanded={showView}>
+            <span className="sidebar-section-title">
+              <Maximize2 size={14} /> View
+            </span>
+            <ChevronDown size={14} className={showView ? 'chevron-open' : ''} />
+          </button>
+
+          {showView && (
+            <div className="sidebar-section-content">
+              <div className="slider-row">
+                <span className="view-slider-label">Card size</span>
+                <input
+                  type="range"
+                  className="sidebar-slider"
+                  min={0.6}
+                  max={2}
+                  step={0.1}
+                  value={cardScale}
+                  onChange={(e) => setCardScale(Number(e.target.value))}
+                />
+                <span className="slider-value">{Math.round(cardScale * 100)}%</span>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -454,7 +517,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
             style={{ flex: 1, padding: '8px', fontSize: '13px' }}
           >
             <Play size={16} />
-            Review Mode
+            {reviewLabel}
           </button>
         )}
       </div>

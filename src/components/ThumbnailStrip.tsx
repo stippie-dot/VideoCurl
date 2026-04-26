@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { calcThumbGrid } from '../utils';
 import './ThumbnailStrip.css';
 
@@ -13,7 +14,7 @@ export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = fals
       return (
         <div className={`thumb-strip ${compact ? 'thumb-strip-compact' : ''}`}>
           <img
-            className="thumb-img thumb-img-os"
+            className="thumb-img thumb-img-os thumb-img-loaded"
             src={osThumbnail}
             draggable={false}
             alt="OS Preview"
@@ -37,15 +38,27 @@ export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = fals
       style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
     >
       {thumbnails.map((thumb, i) => (
-        <img
+        <FadingThumbImage
           key={thumb}
-          className="thumb-img"
           src={`thumb:///${encodeURIComponent(thumb)}`}
-          loading="lazy"
           alt={`Frame ${i + 1}`}
-          draggable={false}
         />
       ))}
     </div>
+  );
+}
+
+function FadingThumbImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <img
+      className={`thumb-img ${loaded ? 'thumb-img-loaded' : ''}`}
+      src={src}
+      loading="lazy"
+      alt={alt}
+      draggable={false}
+      onLoad={() => setLoaded(true)}
+    />
   );
 }

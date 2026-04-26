@@ -360,6 +360,18 @@ export default function App() {
     useStore.getState().setReviewMode(true);
   }, [setFolderFilterPath]);
 
+  const handleCloseSession = useCallback(async () => {
+    scanIdRef.current += 1;
+    await window.electronAPI?.cancelGeneration();
+    await window.electronAPI?.resetLoadedDirectories();
+    setIsScanning(false);
+    setIsGenerating(false);
+    setScanProgress({ found: 0, currentFile: '' });
+    setGenProgress({ current: 0, total: 0 });
+    useStore.getState().setDirectory(null);
+    pushToast('Closed current session.', 'info');
+  }, [pushToast, setGenProgress, setIsGenerating, setIsScanning, setScanProgress]);
+
   return (
     <div
       className={`app-layout${isDragOver ? ' drag-over' : ''}`}
@@ -376,6 +388,7 @@ export default function App() {
           onDirectoryPicked={handleDirectoryPicked}
           onNotify={pushToast}
           onOpenSettings={() => openSettings('interface')}
+          onCloseSession={() => void handleCloseSession()}
         />
       )}
 
@@ -386,7 +399,7 @@ export default function App() {
         {isScanning && videos.length === 0 && (
           <div className="scanning-overlay">
             <div className="scanning-spinner" />
-            <p>Scanning for videosâ€¦</p>
+            <p>Scanning for videos...</p>
           </div>
         )}
       </main>
@@ -395,7 +408,7 @@ export default function App() {
       {isDragOver && (
         <div className="drag-overlay">
           <div className="drag-overlay-inner">
-            <span className="drag-overlay-icon">ðŸ“</span>
+            <span className="drag-overlay-icon">Folder</span>
             <span>Drop folder to open</span>
           </div>
         </div>

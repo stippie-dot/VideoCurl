@@ -48,60 +48,226 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
+  margin: 0;
 }
 
-/* ── Directory Path ── */
-.directory-info {
+/* Session */
+.sidebar-session-section {
+  gap: 12px;
+}
+
+.session-card {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.4;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
 }
-.directory-info svg {
+
+.session-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-card-main > svg {
   flex-shrink: 0;
   margin-top: 2px;
+  color: var(--text-tertiary);
 }
-.directory-path {
+
+.session-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+}
+
+.session-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.session-path {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
   word-break: break-all;
 }
 
-.btn-recents-toggle {
-  margin-left: auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+.session-subfolders-toggle {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--text-tertiary);
-  background: transparent;
-  flex-shrink: 0;
+  gap: 7px;
+  width: calc(100% + 23px);
+  box-sizing: border-box;
+  margin-top: 3px;
+  margin-left: -23px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.btn-recents-toggle:hover {
+.session-subfolders-toggle:hover {
   color: var(--text-primary);
+  border-color: var(--border-hover);
   background: var(--bg-surface-hover);
 }
 
+.session-subfolders-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-subfolders-box {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--border-hover);
+  background: var(--bg-app);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.session-subfolders-toggle input:checked + .session-subfolders-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.session-subfolders-toggle input:checked + .session-subfolders-box::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.session-action-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.session-action-btn {
+  min-width: 0;
+  padding: 8px 6px;
+  font-size: 12px;
+  gap: 5px;
+  justify-content: center;
+}
+
+.recents-header-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  text-align: left;
+}
+
+.recents-header-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
+}
+
+/* Collapsible Sections */
+.sidebar-collapsible-section {
+  gap: 0;
+}
+
+.sidebar-section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
+}
+
+.sidebar-section-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.sidebar-section-toggle svg {
+  transition: transform 0.15s;
+}
+
+.sidebar-section-toggle .chevron-open {
+  transform: rotate(180deg);
+}
+
+.recents-header-btn .chevron-open {
+  transform: rotate(180deg);
+}
+
+.sidebar-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+/* â”€â”€ Session â”€â”€ */
+/* â”€â”€ Collapsible Sections â”€â”€ */
+/* ── Directory Path ── */
 .recents-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
+}
+
+.recents-panel {
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+}
+
+.recents-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .recents-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 9px;
-  border-radius: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
   color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   font-size: 12px;
   text-align: left;
 }
@@ -110,6 +276,24 @@
   color: var(--text-primary);
   border-color: var(--border-hover);
   background: var(--bg-surface-hover);
+}
+
+.recents-item-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.recents-item-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recents-item-meta {
+  font-size: 10px;
+  color: var(--text-tertiary);
 }
 
 .recents-item:disabled {
@@ -123,10 +307,38 @@
   background: var(--accent-dim);
 }
 
+.recents-remove-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.recents-remove-btn:hover {
+  color: var(--color-delete);
+  border-color: rgba(255, 92, 108, 0.35);
+  background: var(--color-delete-dim);
+}
+
 .recents-clear-btn {
-  align-self: flex-start;
-  padding: 6px 10px;
-  font-size: 12px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  background: transparent;
+  font-size: 11px;
+  text-align: left;
+}
+
+.recents-clear-btn:hover {
+  color: var(--text-primary);
 }
 
 /* ── Checkbox ── */
@@ -157,6 +369,11 @@
   padding: 8px 10px;
   text-align: center;
 }
+
+.stat-total {
+  grid-column: 1 / -1;
+}
+
 .stat-value {
   display: block;
   font-size: 18px;
@@ -186,15 +403,17 @@
 
 /* ── Filter Pills ── */
 .filter-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
 }
 .pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 6px 14px;
+  min-width: 0;
+  padding: 6px 8px;
   border-radius: 50px;
   font-size: 12px;
   font-weight: 500;
@@ -205,6 +424,16 @@
   cursor: pointer;
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
 }
+
+.pill:nth-child(1),
+.pill:nth-child(2) {
+  grid-column: span 3;
+}
+
+.pill:nth-child(n + 3) {
+  grid-column: span 2;
+}
+
 .pill:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
@@ -244,6 +473,7 @@
   border-color: var(--border-hover);
 }
 
+.filter-field,
 .filter-input-group {
   display: flex;
   flex-direction: column;
@@ -351,6 +581,10 @@
   border-top: 1px solid var(--border);
 }
 
+.sidebar-actions:empty {
+  display: none;
+}
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -378,6 +612,21 @@
 .btn-ghost:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+}
+.btn-outline {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.btn-close-session:hover {
+  color: var(--color-delete);
+  border-color: rgba(255, 92, 108, 0.35);
+  background: var(--color-delete-dim);
 }
 .btn-icon {
   padding: 7px;
@@ -442,6 +691,16 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.view-slider-label {
+  width: 100%;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
 }
 
 .sidebar-slider {
@@ -488,9 +747,10 @@
 /* ── Settings Footer ── */
 .sidebar-footer {
   margin-top: auto;
-  padding: 12px 20px;
+  padding: 16px 20px;
   border-top: 1px solid var(--border-color);
   display: flex;
+  background: linear-gradient(180deg, rgba(10, 10, 18, 0), var(--bg-sidebar) 18px);
 }
 
 .settings-icon-btn {

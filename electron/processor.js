@@ -200,6 +200,19 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
 /**
  * Process a batch of videos with limited concurrency.
  */
+function getConcurrentLimit(config = {}) {
+  if (config.maxConcurrent === 'auto') {
+    const cpuBased = Math.floor(os.cpus().length / 2);
+    const freeMemGb = os.freemem() / (1024 ** 3);
+    const memBased = Math.max(1, Math.floor((freeMemGb - 1) / 0.4));
+    return Math.max(1, Math.min(12, Math.min(cpuBased, memBased)));
+  }
+  if (config.maxConcurrent > 0) {
+    return Math.max(1, Math.min(16, config.maxConcurrent));
+  }
+  return 3;
+}
+
 async function processVideos(videos, thumbDir, config, onProgress, onVideoReady) {
   const token = { cancelled: false };
   currentToken = token;
@@ -208,15 +221,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
 
   const queue = [...videos];
   const workers = [];
-
-  let concurrentLimit = 3;
-  if (config.maxConcurrent === 'auto') {
-    // Auto-scaling based purely on physical cores, but safely capped at 12 to 
-    // strictly prevent SSD Random-Read bottlenecks and RAM overflow on extreme workstations.
-    concurrentLimit = Math.max(1, Math.min(12, Math.floor(os.cpus().length / 2)));
-  } else if (config.maxConcurrent > 0) {
-    concurrentLimit = Math.max(1, Math.min(16, config.maxConcurrent));
-  }
+  const concurrentLimit = getConcurrentLimit(config);
 
   for (let i = 0; i < concurrentLimit; i++) {
     workers.push(
@@ -225,7 +230,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
           const video = queue.shift();
           if (!video) break;
           try {
-            const result = await generateThumbnailsForVideo(video, thumbDir, config, token);
+            const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
+            const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
             current++;
             if (onProgress) onProgress({ current, total });
             if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
@@ -254,4 +260,4 @@ function cancelProcessing() {
   activeCommands.clear();
 }
 
-module.exports = { processVideos, cancelProcessing };
+module.exports = { processVideos, cancelProcessing, getConcurrentLimit };

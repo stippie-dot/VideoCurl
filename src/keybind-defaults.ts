@@ -73,6 +73,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.hasSeenAppModeIntro = false;
   }
 
+  if (typeof result.defaultGroupByFolder !== 'boolean') {
+    result.defaultGroupByFolder = true;
+  }
+
   if (!['centralised', 'per-drive', 'distributed'].includes(result.cacheLocation as string)) {
     result.cacheLocation = 'centralised';
   }

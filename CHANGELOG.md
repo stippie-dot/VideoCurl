@@ -2,6 +2,24 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.8.0] - 2026-04-26
+
+### Added
+- Auto concurrency now factors in available RAM — each ffmpeg instance uses ~400 MB, so the limit is capped to whichever is lower: half the CPU cores or `(free RAM − 1 GB) / 400 MB`. Prevents out-of-memory on lower-spec machines.
+- Settings panel now shows the resolved thread count when Auto concurrency is selected, making the setting self-documenting.
+
+### Changed
+- Cache writes now fan out to per-folder SQLite databases that mirror the actual directory hierarchy on disk. Existing flat-root cache DBs are automatically split on first scan.
+- Thumbnail output directory is resolved per-video when using folder-distributed cache, keeping thumbs co-located with their DB.
+- Sidebar layout reorganized with improved visual hierarchy and spacing.
+- `defaultGroupByFolder` now correctly defaults to `true` for existing installs that predate the setting.
+
+### Fixed
+- Grid thumbnail flicker eliminated: `filteredVideos` selector upgraded to shallow equality, preventing react-window from remounting all visible rows on every thumbnail batch update.
+- `getItemSize` now uses a stable ref instead of reading rows state, removing a secondary source of row remounts.
+- Thumbnails now fade in with a CSS opacity transition instead of snapping in abruptly.
+- `ElectronAPI` TypeScript interface updated with missing `getAutoConcurrency` declaration.
+
 ## [1.7.0] - 2026-04-25
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "video-cull",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "High-performance video culling tool for managing large video collections",
   "author": "stippie dot",
   "license": "AGPL-3.0-only",

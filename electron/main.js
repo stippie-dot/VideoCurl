@@ -10,11 +10,15 @@ const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
+if (isDev) app.setPath('userData', app.getPath('userData') + '-dev');
 let mainWindow;
 let currentScanDir = null;
 let currentScanDirs = new Set();
 let defaultCentralCacheRoot = null; // set after app ready
 let activeCacheRoots = new Set();
+let isQuitting = false;
+const activeBatchIntervals = new Set();
+let menuBarHiddenForVideoFullscreen = false;
 
 // Set of known valid video paths, populated on every scan-directory call.
 // All IPC handlers that accept file paths validate against this set.
@@ -31,8 +35,15 @@ async function isPathWithinDir(candidate, baseDir) {
   const resolved = path.resolve(candidate);
   const resolvedBase = path.resolve(baseDir);
 
-  // Fast check: deny immediately if the normalised path escapes the base dir
-  if (resolved !== resolvedBase && !resolved.startsWith(resolvedBase + path.sep)) {
+  const isSameOrInside = (targetPath, rootPath) => {
+    const relative = path.relative(rootPath, targetPath);
+    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+  };
+
+  // Fast check: deny immediately if the normalised path escapes the base dir.
+  // path.relative handles drive roots like "D:\" correctly; string prefix checks
+  // can accidentally require "D:\\" and reject every child on the drive.
+  if (!isSameOrInside(resolved, resolvedBase)) {
     return false;
   }
 
@@ -40,12 +51,78 @@ async function isPathWithinDir(candidate, baseDir) {
   try {
     const real = await fs.realpath(candidate);
     const realBase = await fs.realpath(baseDir).catch(() => resolvedBase);
-    return real === realBase || real.startsWith(realBase + path.sep);
+    return isSameOrInside(real, realBase);
   } catch {
     // Candidate doesn't exist (e.g. thumbnail still being generated).
     // path.resolve check above already passed â€” allow it through.
     return true;
   }
+}
+
+function getRangeDetails(rangeHeader, fileSize) {
+  if (!rangeHeader) {
+    return { hasRange: false, start: 0, end: fileSize - 1, chunkSize: fileSize, valid: true };
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) {
+    return { hasRange: true, valid: false, error: 'Malformed Range header.' };
+  }
+
+  let start;
+  let end;
+  if (match[1] === '' && match[2] === '') {
+    return { hasRange: true, valid: false, error: 'Range start and end are both empty.' };
+  }
+
+  if (match[1] === '') {
+    const suffixLength = Number(match[2]);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return { hasRange: true, valid: false, error: 'Invalid suffix byte range.' };
+    }
+    start = Math.max(0, fileSize - suffixLength);
+    end = fileSize - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] === '' ? fileSize - 1 : Number(match[2]);
+  }
+
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= fileSize) {
+    return { hasRange: true, valid: false, start, end, error: 'Requested range is outside the file.' };
+  }
+
+  end = Math.min(end, fileSize - 1);
+  return { hasRange: true, start, end, chunkSize: end - start + 1, valid: true };
+}
+
+function canSendToRenderer() {
+  return Boolean(
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.webContents &&
+    !mainWindow.webContents.isDestroyed()
+  );
+}
+
+function sendToRenderer(channel, payload) {
+  if (!canSendToRenderer()) {
+    return false;
+  }
+
+  try {
+    mainWindow.webContents.send(channel, payload);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function setVideoFullscreenMenuState(fullscreen) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  menuBarHiddenForVideoFullscreen = Boolean(fullscreen);
+  mainWindow.setAutoHideMenuBar(menuBarHiddenForVideoFullscreen);
+  mainWindow.setMenuBarVisibility(!menuBarHiddenForVideoFullscreen);
+  return true;
 }
 
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -65,6 +142,10 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.on('closed', () => {
+    menuBarHiddenForVideoFullscreen = false;
+    mainWindow = null;
+  });
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
@@ -117,8 +198,13 @@ app.whenReady().then(() => {
   });
 
   protocol.handle('video', async (request) => {
-    let filePath = decodeURIComponent(request.url.slice('video:///'.length));
-    
+    let filePath;
+    try {
+      filePath = decodeURIComponent(request.url.slice('video:///'.length));
+    } catch (err) {
+      return new Response('Bad Request', { status: 400 });
+    }
+
     // On Windows, ensure the path starts with drive letter
     if (process.platform === 'win32' && !filePath.match(/^[a-zA-Z]:/)) {
       filePath = filePath.replace(/^\//, '');
@@ -138,41 +224,50 @@ app.whenReady().then(() => {
       const fileSize = stats.size;
       const range = request.headers.get('range');
 
-      const ext = require('path').extname(filePath).toLowerCase();
+      const ext = path.extname(filePath).toLowerCase();
       let contentType = 'video/mp4';
       if (ext === '.webm') contentType = 'video/webm';
       else if (ext === '.ogg') contentType = 'video/ogg';
 
       const highWaterMark = 5 * 1024 * 1024; // 5MB chunks
+      const rangeDetails = getRangeDetails(range, fileSize);
 
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunksize = (end - start) + 1;
-        
+      if (!rangeDetails.valid) {
+        return new Response('Range Not Satisfiable', {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          }
+        });
+      }
+
+      if (rangeDetails.hasRange) {
+        const { start, end, chunkSize } = rangeDetails;
         const fileStream = createReadStream(filePath, { start, end, highWaterMark });
         const webStream = Readable.toWeb(fileStream);
 
+        const responseHeaders = {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize.toString(),
+          'Content-Type': contentType,
+        };
         return new Response(webStream, {
           status: 206,
-          headers: {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize.toString(),
-            'Content-Type': contentType,
-          }
+          headers: responseHeaders
         });
       } else {
         const fileStream = createReadStream(filePath, { highWaterMark });
         const webStream = Readable.toWeb(fileStream);
+        const responseHeaders = {
+          'Content-Length': fileSize.toString(),
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+        };
         return new Response(webStream, {
           status: 200,
-          headers: {
-            'Content-Length': fileSize.toString(),
-            'Content-Type': contentType,
-            'Accept-Ranges': 'bytes',
-          }
+          headers: responseHeaders
         });
       }
     } catch (e) {
@@ -211,30 +306,30 @@ function setApplicationMenu() {
         {
           label: 'Settings...',
           accelerator: 'CmdOrCtrl+,',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'open-settings')
+          click: () => sendToRenderer('menu-action', 'open-settings')
         },
         { type: 'separator' },
         {
           label: 'Open Directory...',
           accelerator: 'CmdOrCtrl+O',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'open-directory')
+          click: () => sendToRenderer('menu-action', 'open-directory')
         },
         {
           label: 'Rescan Directory',
           accelerator: 'F5',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'rescan-directory')
+          click: () => sendToRenderer('menu-action', 'rescan-directory')
         },
         {
           label: 'Clear Cache & Reload',
           accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'clear-cache')
+          click: () => sendToRenderer('menu-action', 'clear-cache')
         },
         {
           label: 'Export Report...',
           id: 'export-report',
           enabled: false,
           accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'export-report')
+          click: () => sendToRenderer('menu-action', 'export-report')
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
@@ -246,12 +341,12 @@ function setApplicationMenu() {
         {
           label: 'Undo Last Action',
           accelerator: 'CmdOrCtrl+Z',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'undo')
+          click: () => sendToRenderer('menu-action', 'undo')
         },
         {
           label: 'Delete All Marked Videos',
           accelerator: 'CmdOrCtrl+Backspace',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'delete-all')
+          click: () => sendToRenderer('menu-action', 'delete-all')
         }
       ]
     },
@@ -261,23 +356,23 @@ function setApplicationMenu() {
         {
           label: 'Zoom In',
           accelerator: 'CmdOrCtrl+Plus',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-in')
+          click: () => sendToRenderer('menu-action', 'zoom-in')
         },
         {
           label: 'Zoom In (Alt)',
           accelerator: 'CmdOrCtrl+=',
           visible: false,
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-in')
+          click: () => sendToRenderer('menu-action', 'zoom-in')
         },
         {
           label: 'Zoom Out',
           accelerator: 'CmdOrCtrl+-',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'zoom-out')
+          click: () => sendToRenderer('menu-action', 'zoom-out')
         },
         { type: 'separator' },
         {
           label: 'Switch Minimal / Extended Mode',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'toggle-app-mode')
+          click: () => sendToRenderer('menu-action', 'toggle-app-mode')
         },
         { type: 'separator' },
         { role: 'reload' },
@@ -291,12 +386,12 @@ function setApplicationMenu() {
         {
           label: 'Reveal in Explorer',
           accelerator: 'CmdOrCtrl+E',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'reveal-video')
+          click: () => sendToRenderer('menu-action', 'reveal-video')
         },
         {
           label: 'Play Externally',
           accelerator: 'CmdOrCtrl+P',
-          click: () => mainWindow && mainWindow.webContents.send('menu-action', 'play-external')
+          click: () => sendToRenderer('menu-action', 'play-external')
         }
       ]
     }
@@ -316,11 +411,21 @@ ipcMain.on('set-export-report-available', (_event, enabled) => {
   setExportReportEnabled(Boolean(enabled));
 });
 
+ipcMain.handle('set-video-fullscreen', (_event, fullscreen) => {
+  return setVideoFullscreenMenuState(Boolean(fullscreen));
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
+  cancelProcessing();
+  for (const interval of activeBatchIntervals) {
+    clearInterval(interval);
+  }
+  activeBatchIntervals.clear();
   cache.closeDb();
 });
 
@@ -924,7 +1029,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   }
 
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
-    mainWindow.webContents.send('scan-progress', progress);
+    sendToRenderer('scan-progress', progress);
   });
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
@@ -1007,25 +1112,31 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   
   const flushBatch = () => {
     if (readyBatch.length > 0) {
-      mainWindow.webContents.send('thumb-ready-batch', readyBatch);
+      const batch = readyBatch;
       readyBatch = [];
+      sendToRenderer('thumb-ready-batch', batch);
     }
     if (lastProgress) {
-      mainWindow.webContents.send('thumb-progress', lastProgress);
+      const progress = lastProgress;
       lastProgress = null;
+      sendToRenderer('thumb-progress', progress);
     }
   };
 
   const batchInterval = setInterval(flushBatch, 1000);
+  activeBatchIntervals.add(batchInterval);
 
-  await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
-    lastProgress = progress;
-  }, (videoId, thumbnails, durationSecs, creationTime) => {
-    readyBatch.push({ videoId, thumbnails, durationSecs, metadataDate: creationTime });
-  });
-
-  flushBatch();
-  clearInterval(batchInterval);
+  try {
+    await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
+      lastProgress = progress;
+    }, (videoId, thumbnails, durationSecs, creationTime) => {
+      readyBatch.push({ videoId, thumbnails, durationSecs, metadataDate: creationTime });
+    });
+  } finally {
+    clearInterval(batchInterval);
+    activeBatchIntervals.delete(batchInterval);
+    if (!isQuitting) flushBatch();
+  }
 
   return true;
 });
@@ -1364,31 +1475,31 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    mainWindow?.webContents.send('update-status', { status: 'checking' });
+    sendToRenderer('update-status', { status: 'checking' });
   });
 
   autoUpdater.on('update-available', (info) => {
-    mainWindow?.webContents.send('update-status', { status: 'available', version: info.version });
+    sendToRenderer('update-status', { status: 'available', version: info.version });
   });
 
   autoUpdater.on('update-not-available', () => {
-    mainWindow?.webContents.send('update-status', { status: 'up-to-date' });
+    sendToRenderer('update-status', { status: 'up-to-date' });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    mainWindow?.webContents.send('update-status', {
+    sendToRenderer('update-status', {
       status: 'downloading',
       percent: Math.round(progress.percent),
     });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    mainWindow?.webContents.send('update-status', { status: 'ready', version: info.version });
+    sendToRenderer('update-status', { status: 'ready', version: info.version });
   });
 
   autoUpdater.on('error', (err) => {
     log.error('[auto-updater] error:', err);
-    mainWindow?.webContents.send('update-status', { status: 'error', message: err.message });
+    sendToRenderer('update-status', { status: 'error', message: err.message });
   });
 
   // Check shortly after launch (if auto-updates are enabled in settings)

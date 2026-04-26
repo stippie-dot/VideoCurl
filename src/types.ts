@@ -244,6 +244,7 @@ export interface ElectronAPI {
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setExportReportAvailable: (enabled: boolean) => void;
   openVideo: (filePath: string) => Promise<void>;
+  setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
   getAutoConcurrency: () => Promise<number>;

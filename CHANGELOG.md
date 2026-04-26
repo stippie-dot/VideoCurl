@@ -2,6 +2,13 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.8.1] - 2026-04-27
+
+### Fixed
+- Playing videos after scanning a whole drive now works correctly. Drive-root selections such as `D:\` are now handled by the loaded-folder security check instead of rejecting every child path.
+- Closing the app during large thumbnail-generation runs no longer triggers a main-process "Object has been destroyed" error from delayed progress batch sends.
+- Video fullscreen now hides the Electron menu bar and restores it when fullscreen exits.
+
 ## [1.8.0] - 2026-04-26
 
 ### Added

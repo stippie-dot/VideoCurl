@@ -40,7 +40,7 @@ export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = fals
       {thumbnails.map((thumb, i) => (
         <FadingThumbImage
           key={thumb}
-          src={`thumb:///${encodeURIComponent(thumb)}`}
+          src={`thumb://local/${encodeURIComponent(thumb)}`}
           alt={`Frame ${i + 1}`}
         />
       ))}

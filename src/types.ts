@@ -221,6 +221,7 @@ export interface UpdateInfo {
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
+  getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
   openInExplorer: (filePath: string) => Promise<void>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;

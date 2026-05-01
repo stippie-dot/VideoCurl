@@ -281,7 +281,7 @@ export default function App() {
     if (!window.electronAPI) return;
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    const droppedPath = (file as File & { path?: string }).path;
+    const droppedPath = window.electronAPI.getPathForFile(file);
     if (!droppedPath) return;
     const result = await window.electronAPI.validateDroppedPath(droppedPath);
     if (!result.valid || !result.isDirectory) {

@@ -77,7 +77,7 @@ export default function ReviewMode() {
   }, [video]);
 
   const videoUrl = useMemo(() => (
-    video ? `video:///${video.path.split('\\').join('/')}` : ''
+    video ? `video://local/${encodeURIComponent(video.path)}` : ''
   ), [video]);
 
   useEffect(() => {

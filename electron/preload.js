@@ -1,8 +1,9 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   validateDroppedPath: (droppedPath) => ipcRenderer.invoke('validate-dropped-path', droppedPath),
   openInExplorer: (filePath) => ipcRenderer.invoke('open-in-explorer', filePath),
 

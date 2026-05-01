@@ -1,6 +1,5 @@
 ﻿const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
 const path = require('path');
-const { pathToFileURL } = require('url');
 const fs = require('fs/promises');
 const os = require('os');
 const { scanDirectory } = require('./scanner');
@@ -95,6 +94,19 @@ function getRangeDetails(rangeHeader, fileSize) {
   return { hasRange: true, start, end, chunkSize: end - start + 1, valid: true };
 }
 
+function getFilePathFromProtocolRequest(request, scheme) {
+  try {
+    const url = new URL(request.url);
+    if (url.hostname === 'local' && url.pathname.length > 1) {
+      return decodeURIComponent(url.pathname.slice(1));
+    }
+  } catch {
+    // Fall through to the legacy parser below.
+  }
+
+  return decodeURIComponent(request.url.slice(`${scheme}:///`.length));
+}
+
 function canSendToRenderer() {
   return Boolean(
     mainWindow &&
@@ -164,8 +176,7 @@ app.whenReady().then(() => {
   defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
-    // thumb:///D:/path/to/.video-cull-thumbs/id/thumb.jpg
-    let filePath = decodeURIComponent(request.url.slice('thumb:///'.length));
+    let filePath = getFilePathFromProtocolRequest(request, 'thumb');
 
     // On Windows, ensure the path starts with drive letter
     if (process.platform === 'win32' && !filePath.match(/^[a-zA-Z]:/)) {
@@ -200,7 +211,7 @@ app.whenReady().then(() => {
   protocol.handle('video', async (request) => {
     let filePath;
     try {
-      filePath = decodeURIComponent(request.url.slice('video:///'.length));
+      filePath = getFilePathFromProtocolRequest(request, 'video');
     } catch (err) {
       return new Response('Bad Request', { status: 400 });
     }

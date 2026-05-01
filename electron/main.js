@@ -167,10 +167,11 @@ function createWindow() {
 }
 
 // â”€â”€ Custom Protocol for serving thumbnail images and videos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'thumb', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
-  { scheme: 'video', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true, isSecure: true, corsEnabled: true } },
-]);
+const customProtocolSchemes = [
+  { scheme: 'thumb', privileges: { standard: true, secure: true, bypassCSP: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
+  { scheme: 'video', privileges: { standard: true, secure: true, bypassCSP: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
+];
+protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
 app.whenReady().then(() => {
   defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');

@@ -7,7 +7,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && node -e \"delete process.env.ELECTRON_RUN_AS_NODE; setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
+    "dev:electron": "wait-on http://localhost:5173 && node -e \"setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
     "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
     "build": "vite build",
     "package": "vite build && electron-builder --win --publish never",

@@ -2,6 +2,20 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [1.8.2] - 2026-05-01
+
+### Changed
+- Thumbnail generation now limits actual active FFmpeg processes directly: frames are extracted sequentially within each video while overall parallelism is spread across videos.
+- Auto concurrency now accounts for the current thread-limit setting and allows higher single-thread process counts on capable systems while still capping by available memory.
+- Hardware-accelerated thumbnail generation now pauses briefly between large batches to reduce GPU/driver pressure during long scans.
+- Processing settings now use clearer wording around parallel FFmpeg processes and one-thread-per-process behavior, with expanded manual process limits up to 32.
+- Removed the Minimal/Extended mode selector, first-run mode notice, View menu toggle, and mode shortcut because Video Cull no longer uses app-wide modes.
+
+### Fixed
+- Auto concurrency in Settings now recalculates from the unsaved local settings, so toggling thread limiting immediately updates the displayed process count.
+- Cancelling thumbnail generation now also applies to fallback frame extraction.
+- `ElectronAPI` TypeScript declarations now include the distributed cache confirmation API.
+
 ## [1.8.1] - 2026-04-27
 
 ### Fixed

@@ -62,6 +62,30 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
 
 const activeCommands = new Set();
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getGpuCooldownMs(config = {}) {
+  if (!config.hardwareAccel) return 0;
+  const configured = Number(config.gpuCooldownMs);
+  if (Number.isFinite(configured) && configured >= 0) {
+    return Math.min(10000, configured);
+  }
+  return 1250;
+}
+
+function getGpuCooldownBatchSize(config = {}, concurrentLimit) {
+  if (!config.hardwareAccel) return 0;
+  const configured = Number(config.gpuCooldownBatchSize);
+  if (Number.isInteger(configured) && configured > 0) {
+    return Math.max(concurrentLimit, Math.min(2000, configured));
+  }
+  const thumbsPerVideo = Math.max(1, Number(config.thumbsPerVideo) || 6);
+  const frameBudget = Math.max(75, Math.floor(1200 / thumbsPerVideo));
+  return Math.max(concurrentLimit, Math.min(500, frameBudget));
+}
+
 /**
  * Extract a single frame from a video at a given timestamp.
  * Uses fast seeking (-ss before -i) via fluent-ffmpeg's seekInput().
@@ -159,8 +183,10 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);
   const thumbnails = [];
 
-  // PARALLEL FRAME EXTRACTION 
-  const extractPromises = timestamps.map(async (timestamp, i) => {
+  // Extract frames sequentially within each video. Overall parallelism is handled
+  // by processVideos(), so maxConcurrent now maps to active FFmpeg commands.
+  for (let i = 0; i < timestamps.length; i++) {
+    const timestamp = timestamps[i];
     if (token.cancelled) return;
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
@@ -172,13 +198,11 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
     } catch {
       // Frame extraction failed — continue with remaining frames
     }
-  });
-
-  await Promise.all(extractPromises);
+  }
   
   if (token.cancelled) throw new Error('Cancelled');
 
-  // Sort back sequentially because parallel extraction arrives inherently out-of-order
+  // Keep output order stable even if a future extraction strategy changes ordering.
   thumbnails.sort((a, b) => a.index - b.index);
   const finalPaths = thumbnails.map(t => t.path);
 
@@ -186,7 +210,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   if (finalPaths.length === 0) {
     const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
     try {
-      await extractFrame(video.path, 0, fallbackPath, config);
+      await extractFrame(video.path, 0, fallbackPath, config, token);
       const stat = await fs.stat(fallbackPath);
       if (stat.size > 0) {
         finalPaths.push(fallbackPath);
@@ -202,13 +226,16 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
  */
 function getConcurrentLimit(config = {}) {
   if (config.maxConcurrent === 'auto') {
-    const cpuBased = Math.floor(os.cpus().length / 2);
+    const cpuCount = os.cpus().length || 4;
     const freeMemGb = os.freemem() / (1024 ** 3);
-    const memBased = Math.max(1, Math.floor((freeMemGb - 1) / 0.4));
-    return Math.max(1, Math.min(12, Math.min(cpuBased, memBased)));
+    const cpuBased = config.cpuThreadsLimited === false
+      ? Math.max(1, Math.floor(cpuCount / 2))
+      : Math.max(2, Math.ceil(cpuCount * 1.25));
+    const memBased = Math.max(1, Math.floor((freeMemGb - 1.5) / 0.25));
+    return Math.max(1, Math.min(24, Math.min(cpuBased, memBased)));
   }
   if (config.maxConcurrent > 0) {
-    return Math.max(1, Math.min(16, config.maxConcurrent));
+    return Math.max(1, Math.min(32, config.maxConcurrent));
   }
   return 3;
 }
@@ -219,33 +246,45 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
   const total = videos.length;
   let current = 0;
 
-  const queue = [...videos];
-  const workers = [];
   const concurrentLimit = getConcurrentLimit(config);
+  const cooldownMs = getGpuCooldownMs(config);
+  const cooldownBatchSize = getGpuCooldownBatchSize(config, concurrentLimit);
 
-  for (let i = 0; i < concurrentLimit; i++) {
-    workers.push(
-      (async () => {
-        while (queue.length > 0 && !token.cancelled) {
-          const video = queue.shift();
-          if (!video) break;
-          try {
-            const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
-            const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
-            current++;
-            if (onProgress) onProgress({ current, total });
-            if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
-          } catch (err) {
-            if (err.message === 'Cancelled') break;
-            current++;
-            if (onProgress) onProgress({ current, total });
+  for (let batchStart = 0; batchStart < videos.length && !token.cancelled; batchStart += cooldownBatchSize || videos.length) {
+    const batchEnd = cooldownBatchSize
+      ? Math.min(batchStart + cooldownBatchSize, videos.length)
+      : videos.length;
+    const queue = videos.slice(batchStart, batchEnd);
+    const workers = [];
+    const workerCount = Math.min(concurrentLimit, queue.length);
+
+    for (let i = 0; i < workerCount; i++) {
+      workers.push(
+        (async () => {
+          while (queue.length > 0 && !token.cancelled) {
+            const video = queue.shift();
+            if (!video) break;
+            try {
+              const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
+              const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
+              current++;
+              if (onProgress) onProgress({ current, total });
+              if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
+            } catch (err) {
+              if (err.message === 'Cancelled') break;
+              current++;
+              if (onProgress) onProgress({ current, total });
+            }
           }
-        }
-      })()
-    );
-  }
+        })()
+      );
+    }
 
-  await Promise.all(workers);
+    await Promise.all(workers);
+    if (cooldownMs > 0 && batchEnd < videos.length && !token.cancelled) {
+      await sleep(cooldownMs);
+    }
+  }
 }
 
 function cancelProcessing() {

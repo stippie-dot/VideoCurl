@@ -119,14 +119,13 @@ All review shortcuts are fully customizable in Settings.
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| App mode | Minimal / Extended | Minimal |
 | Cache location | Centralised / Per-drive / Distributed | Centralised |
 | Thumbnails per video | 1, 2, 4, 6, 9 | 6 |
 | Default card scale | 0.5x – 2.0x | 1.0x |
 | Default sort | Name / Size / Date / Duration | Name |
 | Group by folder | On / Off | On |
-| Concurrent processing | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 8 | Auto |
-| Limit FFmpeg to 1 thread per file | On / Off | On |
+| Parallel FFmpeg processes | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
+| Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 – 60 seconds | 3s |
 | Hardware acceleration | On / Off | On |
 | Auto updates | On / Off | On |

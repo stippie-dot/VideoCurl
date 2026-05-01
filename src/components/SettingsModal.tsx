@@ -43,12 +43,14 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     if (window.electronAPI?.getAppVersion) {
       window.electronAPI.getAppVersion().then(setAppVersion);
     }
-    if (window.electronAPI?.getAutoConcurrency) {
-      window.electronAPI.getAutoConcurrency().then(setAutoConcurrency).catch(() => setAutoConcurrency(null));
-    }
     setExportMessage('');
     setCacheMessage('');
   }, [isOpen, globalSettings]);
+
+  useEffect(() => {
+    if (!isOpen || !window.electronAPI?.getAutoConcurrency) return;
+    window.electronAPI.getAutoConcurrency(localSettings).then(setAutoConcurrency).catch(() => setAutoConcurrency(null));
+  }, [isOpen, localSettings]);
 
   useEffect(() => {
     if (isOpen) setActiveTab(initialTab);
@@ -202,15 +204,6 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             {activeTab === 'interface' && (
               <div className="settings-form">
                 <div className="form-group">
-                  <label>App Mode</label>
-                  <select value={localSettings.appMode} onChange={(e) => handleChange('appMode', e.target.value)}>
-                    <option value="extended">Extended</option>
-                    <option value="minimal">Minimal</option>
-                  </select>
-                  <span className="help-text">Minimal keeps the culling workflow focused. Extended enables additive tools as they ship.</span>
-                </div>
-
-                <div className="form-group">
                   <label>Default Card Scale</label>
                   <div className="flex-row">
                     <input type="range" min="0.5" max="2.0" step="0.1" value={localSettings.defaultCardScale} onChange={(e) => handleChange('defaultCardScale', Number(e.target.value))} />
@@ -329,35 +322,40 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 </div>
 
                 <div className="form-group">
-                  <label>Concurrent Processing Limit</label>
+                  <label>Parallel FFmpeg Processes</label>
                   <select
                     value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent}
                     onChange={(e) => handleChange('maxConcurrent', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
                   >
                     <option value="auto">
                       {autoConcurrency
-                        ? `Auto (CPU + RAM aware, ${autoConcurrency} process${autoConcurrency === 1 ? '' : 'es'})`
+                        ? `Auto (${autoConcurrency} process${autoConcurrency === 1 ? '' : 'es'}, CPU + RAM aware)`
                         : 'Auto (CPU + RAM aware)'}
                     </option>
                     <option value={1}>1 Process (Slower, stable)</option>
                     <option value={2}>2 Processes</option>
                     <option value={3}>3 Processes</option>
                     <option value={4}>4 Processes</option>
+                    <option value={6}>6 Processes</option>
                     <option value={8}>8 Processes</option>
+                    <option value={12}>12 Processes</option>
+                    <option value={16}>16 Processes</option>
+                    <option value={24}>24 Processes</option>
+                    <option value={32}>32 Processes</option>
                   </select>
                   <span className="help-text">
                     {localSettings.maxConcurrent === 'auto' && autoConcurrency
-                      ? `This system will use ${autoConcurrency} concurrent FFmpeg process${autoConcurrency === 1 ? '' : 'es'} in Auto mode.`
-                      : 'Controls how many FFmpeg processes spawn simultaneously when generating thumbnails.'}
+                      ? `Auto will run up to ${autoConcurrency} FFmpeg process${autoConcurrency === 1 ? '' : 'es'} at once with the current thread setting.`
+                      : 'Caps how many thumbnail extraction processes run at the same time.'}
                   </span>
                 </div>
 
                 <div className="form-group checkbox-group">
                   <label>
                     <input type="checkbox" checked={localSettings.cpuThreadsLimited} onChange={(e) => handleChange('cpuThreadsLimited', e.target.checked)} />
-                    Force single FFmpeg thread per file (Recommended)
+                    Limit each FFmpeg process to 1 CPU thread (Recommended)
                   </label>
-                  <span className="help-text">Prevents FFmpeg from gobbling 100% CPU on tiny thumbnails during parallel execution.</span>
+                  <span className="help-text">Uses more small FFmpeg processes instead of fewer multi-threaded processes. Usually faster and smoother for thumbnail generation.</span>
                 </div>
 
                 <div className="form-group checkbox-group">

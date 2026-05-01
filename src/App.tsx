@@ -32,7 +32,6 @@ export default function App() {
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
-  const settings = useStore((s) => s.settings);
   const scanIdRef = useRef(0);
   const isPrivateRef = useRef(false);
   const dragDepthRef = useRef(0);
@@ -48,7 +47,6 @@ export default function App() {
   const toastIdRef = useRef(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
     isPrivateRef.current = isPrivate;
@@ -79,22 +77,6 @@ export default function App() {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
-  }, []);
-
-  const applyAppMode = useCallback(async (appMode: 'minimal' | 'extended', markIntroSeen = true) => {
-    const state = useStore.getState();
-    state.updateSettings({
-      appMode,
-      hasSeenAppModeIntro: markIntroSeen ? true : state.settings.hasSeenAppModeIntro,
-    });
-    await useStore.getState().saveSettings();
-    pushToast(`Switched to ${appMode === 'extended' ? 'Extended' : 'Minimal'} mode.`, 'info');
-  }, [pushToast]);
-
-  const dismissAppModeIntro = useCallback(async () => {
-    const state = useStore.getState();
-    state.updateSettings({ hasSeenAppModeIntro: true });
-    await useStore.getState().saveSettings();
   }, []);
 
   // Scan directory when selected
@@ -135,7 +117,7 @@ export default function App() {
   }, [includeSubfolders, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress]);
 
   useEffect(() => {
-    void useStore.getState().loadSettings().finally(() => setSettingsLoaded(true));
+    void useStore.getState().loadSettings();
   }, []);
 
   useEffect(() => {
@@ -215,11 +197,6 @@ export default function App() {
           openSettings('interface');
           break;
         }
-        case 'toggle-app-mode': {
-          const nextMode = state.settings.appMode === 'extended' ? 'minimal' : 'extended';
-          void applyAppMode(nextMode);
-          break;
-        }
       }
     });
 
@@ -242,10 +219,6 @@ export default function App() {
       if (matchesKeybind(e, s.keyShowHelp)) {
         e.preventDefault();
         setShowShortcutsHelp((v) => !v);
-      } else if (matchesKeybind(e, s.keyToggleAppMode)) {
-        e.preventDefault();
-        const nextMode = s.appMode === 'extended' ? 'minimal' : 'extended';
-        void applyAppMode(nextMode);
       } else if (e.key === 'Escape') {
         setShowShortcutsHelp(false);
       }
@@ -259,7 +232,7 @@ export default function App() {
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, applyAppMode]);
+  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
@@ -450,19 +423,6 @@ export default function App() {
             <button className="update-banner-btn" onClick={() => setUpdateBannerDismissed(true)}>
               Later
             </button>
-          </div>
-        </div>
-      )}
-
-      {settingsLoaded && !settings.hasSeenAppModeIntro && !isPrivate && (
-        <div className="mode-intro-backdrop">
-          <div className="mode-intro-modal" role="dialog" aria-modal="true" aria-labelledby="mode-intro-title">
-            <h2 id="mode-intro-title">You're using Video Cull in Extended mode</h2>
-            <p>Ratings, analytics, and more are enabled. You can switch to Minimal anytime in Settings, the View menu, or with your mode shortcut.</p>
-            <div className="mode-intro-actions">
-              <button className="btn btn-ghost" onClick={() => void applyAppMode('minimal')}>Switch to Minimal</button>
-              <button className="btn btn-primary" onClick={() => void dismissAppModeIntro()}>Got it</button>
-            </div>
           </div>
         </div>
       )}

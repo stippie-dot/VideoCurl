@@ -25,7 +25,6 @@ export type KeybindSettingKey =
   | 'keyPrevVideo' | 'keyNextVideo' | 'keyEnterPlay' | 'keyExternalPlayer'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
-  | 'keyToggleAppMode'
   | 'keyPreviewSeekBack' | 'keyPreviewSeekForward';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
@@ -53,7 +52,6 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyPreviewSeekForward', description: 'Forward 5s',                group: 'Preview' },
   // Global
   { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
-  { id: 'keyToggleAppMode',      description: 'Toggle Minimal / Extended mode', group: 'Global' },
 ];
 
 // Fixed shortcuts that are never configurable (displayed in help only)

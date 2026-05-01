@@ -409,8 +409,6 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Settings ──
   isSettingsModalOpen: false,
   settings: {
-    appMode: 'extended',
-    hasSeenAppModeIntro: false,
     cacheLocation: 'centralised',
     centralCachePath: null,
     perDriveCachePaths: {},

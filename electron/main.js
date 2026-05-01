@@ -370,11 +370,6 @@ function setApplicationMenu() {
           click: () => sendToRenderer('menu-action', 'zoom-out')
         },
         { type: 'separator' },
-        {
-          label: 'Switch Minimal / Extended Mode',
-          click: () => sendToRenderer('menu-action', 'toggle-app-mode')
-        },
-        { type: 'separator' },
         { role: 'reload' },
         { role: 'togglefullscreen' },
         ...(isDev ? [{ role: 'toggledevtools' }] : [])
@@ -1320,8 +1315,11 @@ ipcMain.handle('validate-cache-location', async (_event, dirPath, expectedDriveK
   return testWritableDirectory(dirPath);
 });
 
-ipcMain.handle('get-auto-concurrency', async () => {
-  return getConcurrentLimit({ maxConcurrent: 'auto' });
+ipcMain.handle('get-auto-concurrency', async (_event, settingsOverride) => {
+  const config = settingsOverride && typeof settingsOverride === 'object'
+    ? settingsOverride
+    : await readJsonFile(CONFIG_FILE, {});
+  return getConcurrentLimit({ ...config, maxConcurrent: 'auto' });
 });
 
 

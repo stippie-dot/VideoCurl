@@ -19,7 +19,6 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keySpeedUp:            kb(']'),
   keyBookmark:           kb('b'),
   keyShowHelp:           kb('?'),
-  keyToggleAppMode:      kb('m', { ctrl: true, shift: true }),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
 };
@@ -65,13 +64,9 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.autoUpdates = true;
   }
 
-  if (result.appMode !== 'minimal' && result.appMode !== 'extended') {
-    result.appMode = 'extended';
-  }
-
-  if (typeof result.hasSeenAppModeIntro !== 'boolean') {
-    result.hasSeenAppModeIntro = false;
-  }
+  delete result.appMode;
+  delete result.hasSeenAppModeIntro;
+  delete result.keyToggleAppMode;
 
   if (typeof result.defaultGroupByFolder !== 'boolean') {
     result.defaultGroupByFolder = true;

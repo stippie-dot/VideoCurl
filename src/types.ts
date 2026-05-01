@@ -59,7 +59,6 @@ export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
 export type CacheLocationMode = 'centralised' | 'per-drive' | 'distributed';
-export type AppMode = 'minimal' | 'extended';
 
 // ── Undo Entry ─────────────────────────────────────────────────────
 export interface UndoEntry {
@@ -74,8 +73,6 @@ export interface UndoEntry {
 import type { Keybind } from './keybinds';
 
 export interface AppSettings {
-  appMode: AppMode;
-  hasSeenAppModeIntro: boolean;
   cacheLocation: CacheLocationMode;
   centralCachePath: string | null;
   perDriveCachePaths: Record<string, string>;
@@ -114,7 +111,6 @@ export interface AppSettings {
   keyPreviewSeekForward: Keybind;
   // Global
   keyShowHelp: Keybind;
-  keyToggleAppMode: Keybind;
 }
 
 // ── Store State ────────────────────────────────────────────────────
@@ -247,8 +243,9 @@ export interface ElectronAPI {
   setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
-  getAutoConcurrency: () => Promise<number>;
+  getAutoConcurrency: (config?: AppSettings) => Promise<number>;
   validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
+  confirmDistributedMode: () => Promise<boolean>;
   migrateCacheSettings: (
     oldSettings: AppSettings,
     newSettings: AppSettings,

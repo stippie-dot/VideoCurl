@@ -1,6 +1,6 @@
-import { useRef, useState, useEffect, useCallback, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
-import { VariableSizeList } from 'react-window';
-import type { ListOnScrollProps } from 'react-window';
+import { useRef, useState, useEffect, useCallback, useMemo, useLayoutEffect, type AriaAttributes, type CSSProperties, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from 'react';
+import { List } from 'react-window';
+import type { ListImperativeAPI } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
@@ -73,7 +73,7 @@ function getFolderPath(video: Video): string {
   return video.path.substring(0, video.path.lastIndexOf(sep));
 }
 
-function Row({ index, style, data }: { index: number; style: CSSProperties; data: GridRowData }) {
+function Row({ index, style, ariaAttributes, ...data }: { index: number; style: CSSProperties; ariaAttributes: AriaAttributes & { role: 'listitem' } } & GridRowData) {
   const {
     rows,
     columnWidth,
@@ -88,7 +88,7 @@ function Row({ index, style, data }: { index: number; style: CSSProperties; data
 
   if (item.type === 'header') {
     return (
-      <div style={style} className="grid-group-header">
+      <div style={style} className="grid-group-header" {...ariaAttributes}>
         <span className="grid-group-label">{item.label}</span>
         <span className="grid-group-meta">
           <span className="grid-group-count">{item.count}</span>
@@ -107,7 +107,7 @@ function Row({ index, style, data }: { index: number; style: CSSProperties; data
   }
 
   return (
-    <div style={style} className="grid-card-row">
+    <div style={style} className="grid-card-row" {...ariaAttributes}>
       {item.videos.map((video, colIdx) => (
         <div
           key={video.id}
@@ -148,8 +148,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
   const containerRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<VariableSizeList>(null);
-  const rowsRef = useRef<RowItem[]>([]);
+  const listRef = useRef<ListImperativeAPI | null>(null);
+  const restoredScrollRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const isSelectionMode = selectedIds.size > 0;
 
@@ -162,6 +162,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     if (persistedGridScroll.directory !== directory) {
       persistedGridScroll = { directory, offset: 0 };
     }
+    restoredScrollRef.current = false;
   }, [directory]);
 
   const cardWidth = Math.round(BASE_CARD_WIDTH * cardScale);
@@ -240,8 +241,6 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     return { rows: result, rowStructureKey: structureKey };
   }, [filteredVideos, columnCount, groupByFolder, directories]);
 
-  rowsRef.current = rows;
-
   useEffect(() => {
     if (selectedIds.size > 0) {
       const next = new Set(Array.from(selectedIds).filter((id) => filteredVideos.some((video) => video.id === id)));
@@ -266,13 +265,16 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSelectionMode, clearGridSelection]);
 
-  // Invalidate react-window size cache when row structure changes (e.g. folder re-ordering).
-  useEffect(() => {
-    listRef.current?.resetAfterIndex(0);
-  }, [columnCount, cardScale, groupByFolder, rowStructureKey]);
+  useLayoutEffect(() => {
+    if (restoredScrollRef.current) return;
+    const element = listRef.current?.element;
+    if (!element) return;
+    element.scrollTop = initialScrollOffset;
+    restoredScrollRef.current = true;
+  }, [dimensions.height, initialScrollOffset, rows.length]);
 
   const getItemSize = useCallback(
-    (index: number) => rowsRef.current[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
+    (index: number, rowProps: GridRowData) => rowProps.rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
     [cardHeight]
   );
 
@@ -398,9 +400,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
 
   const columnWidth = (dimensions.width - GAP * (columnCount + 1)) / columnCount;
 
-  const handleScroll = useCallback(({ scrollOffset, scrollUpdateWasRequested }: ListOnScrollProps) => {
-    if (scrollUpdateWasRequested) return;
-    persistedGridScroll = { directory, offset: scrollOffset };
+  const handleScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
+    persistedGridScroll = { directory, offset: event.currentTarget.scrollTop };
   }, [directory]);
 
   const itemData = useMemo<GridRowData>(() => ({
@@ -421,19 +422,17 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
           <p>No videos match your current filters.</p>
         </div>
       ) : (
-        <VariableSizeList
-          ref={listRef}
-          height={dimensions.height}
-          width={dimensions.width}
-          initialScrollOffset={initialScrollOffset}
-          itemCount={rows.length}
-          itemData={itemData}
-          itemSize={getItemSize}
+        <List
+          key={rowStructureKey}
+          listRef={listRef}
+          rowCount={rows.length}
+          rowComponent={Row}
+          rowHeight={getItemSize}
+          rowProps={itemData}
           overscanCount={2}
           onScroll={handleScroll}
-        >
-          {Row}
-        </VariableSizeList>
+          style={{ height: dimensions.height, width: dimensions.width }}
+        />
       )}
 
       {selectedIds.size > 0 && (
